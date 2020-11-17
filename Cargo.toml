@@ -1,0 +1,21 @@
+[package]
+name = "did-key"
+version = "0.1.0"
+authors = ["Tomislav Markovski <tomislav@trinsic.id>"]
+edition = "2018"
+
+[lib]
+crate-type = [ "lib", "cdylib", "staticlib" ]
+
+[dependencies]
+ed25519-dalek = "1.0.1"
+x25519-dalek = "1.1.0"
+curve25519-dalek = "3.0.0"
+bs58 = "0.3.1"
+sha2 = "0.9.1"
+getrandom = { version = "0.2", features = ["js"] }
+url = "2.2"
+
+[dependencies.p256]
+version = "0.5.2"
+features = ["ecdsa", "ecdh"]
