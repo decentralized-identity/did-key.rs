@@ -1,15 +1,12 @@
-use std::convert::TryFrom;
-
-use crate::KeyMaterial;
-
 use super::{generate_seed, Ecdsa};
+use crate::{AsymmetricKey, Payload};
 use p256::{
     ecdsa::{signature::Signer, signature::Verifier, Signature, SigningKey, VerifyKey},
     EncodedPoint,
 };
-use url::Url;
+use std::convert::TryFrom;
 
-pub type P256Key = KeyMaterial<VerifyKey, SigningKey>;
+pub type P256Key = AsymmetricKey<VerifyKey, SigningKey>;
 
 impl std::fmt::Debug for P256Key {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -41,54 +38,39 @@ impl P256Key {
         };
         P256Key {
             secret_key: None, //.to_encoded_point(false),
-            public_key: VerifyKey::from_encoded_point(&EncodedPoint::from_bytes(pk.as_slice()).expect("invalid key")).expect("invalid point"),
+            public_key: VerifyKey::from_encoded_point(&EncodedPoint::from_bytes(pk.as_slice()).expect("invalid key"))
+                .expect("invalid point"),
         }
-    }
-}
-
-// impl From<Key> for P256Key {
-//     fn from(key: Key) -> Self {
-//         match key.secret_key.is_empty() {
-//             true => P256Key::from_public_key(key.public_key.as_slice()),
-//             false => P256Key::from_seed(vec![].as_slice()),
-//         }
-//     }
-// }
-
-impl TryFrom<String> for P256Key {
-    type Error = String;
-
-    fn try_from(did_uri: String) -> Result<Self, Self::Error> {
-        // let re = Regex::new(r"did:key:[\w]*#[\w]*\??[\w]*").unwrap();
-
-        let url = Url::parse(did_uri.as_ref()).unwrap();
-
-        let fingerprint = bs58::decode(url.fragment().unwrap().strip_prefix("z").unwrap()).into_vec().unwrap();
-        let fingerprint_data = fingerprint.as_slice();
-
-        let codec = &fingerprint_data[..3];
-        if codec != &[0x12, 0x0, 0x1] {
-            return Err("invalid multicodec bytes".to_string());
-        }
-        Ok(P256Key::from_public_key(&fingerprint_data[3..]))
     }
 }
 
 impl Ecdsa for P256Key {
     type Err = String;
 
-    fn sign(&self, payload: &[u8]) -> Vec<u8> {
-        let signature = match &self.secret_key {
-            Some(sig) => sig.sign(payload),
-            None => panic!("secret key not found"),
-        };
-        signature.as_ref().to_vec()
+    fn sign(&self, payload: Payload) -> Vec<u8> {
+        match payload {
+            Payload::Buffer(payload) => {
+                let signature = match &self.secret_key {
+                    Some(sig) => sig.sign(&payload),
+                    None => panic!("secret key not found"),
+                };
+                signature.as_ref().to_vec()
+            }
+            _ => unimplemented!("payload type not supported for this key"),
+        }
     }
 
-    fn verify(&self, payload: &[u8], signature: &[u8]) -> Result<(), Self::Err> {
-        match self.public_key.verify(payload, &Signature::try_from(signature).unwrap()).is_ok() {
-            true => Ok(()),
-            false => Err("invalid signature".to_string()),
+    fn verify(&self, payload: Payload, signature: &[u8]) -> Result<(), Self::Err> {
+        match payload {
+            Payload::Buffer(payload) => match self
+                .public_key
+                .verify(&payload, &Signature::try_from(signature).unwrap())
+                .is_ok()
+            {
+                true => Ok(()),
+                false => Err("invalid signature".to_string()),
+            },
+            _ => unimplemented!("payload type not supported for this key"),
         }
     }
 }
@@ -99,11 +81,11 @@ pub mod test {
     #[test]
     fn test_demo() {
         let key = P256Key::from_seed(vec![].as_slice());
-        let message = b"super secret message";
+        let message = b"super secret message".to_vec();
 
-        let signature = key.sign(message);
+        let signature = key.sign(Payload::Buffer(message.clone()));
 
-        let is_valud = key.verify(message, signature.as_slice());
+        let is_valud = key.verify(Payload::Buffer(message), signature.as_slice());
 
         assert!(is_valud.map_or(false, |_| true));
     }

@@ -1,4 +1,4 @@
-use crate::{ed25519::Ed25519Key, KeyMaterial};
+use crate::{ed25519::Ed25519KeyPair, AsymmetricKey};
 
 use super::{generate_seed, Ecdh};
 use curve25519_dalek::edwards::CompressedEdwardsY;
@@ -6,7 +6,7 @@ use sha2::{Digest, Sha512};
 use std::convert::TryInto;
 use x25519_dalek::{PublicKey, StaticSecret};
 
-pub type X25519Key = KeyMaterial<PublicKey, StaticSecret>;
+pub type X25519Key = AsymmetricKey<PublicKey, StaticSecret>;
 
 impl X25519Key {
     pub fn from_seed(seed: &[u8]) -> Self {
@@ -41,8 +41,8 @@ impl Ecdh for X25519Key {
     }
 }
 
-impl From<Ed25519Key> for X25519Key {
-    fn from(key: Ed25519Key) -> Self {
+impl From<Ed25519KeyPair> for X25519Key {
+    fn from(key: Ed25519KeyPair) -> Self {
         match key.secret_key {
             Some(sk) => {
                 let hash = Sha512::digest(&sk.as_ref()[..32]);
