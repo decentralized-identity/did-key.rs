@@ -14,8 +14,8 @@ pub type Bls12381KeyPair = AsymmetricKey<Vec<u8>, SecretKey>;
 impl Ecdsa for Bls12381KeyPair {
     type Err = String;
 
-    fn sign(&self, _payload: Payload) -> Vec<u8> {
-        let messages: Vec<SignatureMessage> = match _payload {
+    fn sign(&self, payload: Payload) -> Vec<u8> {
+        let messages: Vec<SignatureMessage> = match payload {
             Payload::Buffer(_) => unimplemented!("payload type not supported"),
             Payload::BufferArray(m) => m.iter().map(|x| SignatureMessage::hash(x)).collect(),
         };
@@ -30,8 +30,28 @@ impl Ecdsa for Bls12381KeyPair {
         .to_vec()
     }
 
-    fn verify(&self, _payload: Payload, _signature: &[u8]) -> Result<(), Self::Err> {
-        todo!()
+    fn verify(&self, payload: Payload, signature: &[u8]) -> Result<(), Self::Err> {
+        let messages: Vec<SignatureMessage> = match payload {
+            Payload::Buffer(_) => unimplemented!("payload type not supported"),
+            Payload::BufferArray(m) => m.iter().map(|x| SignatureMessage::hash(x)).collect(),
+        };
+        let dpk = DeterministicPublicKey::try_from(self.public_key.clone()).unwrap();
+        let pk = dpk.to_public_key(messages.len()).unwrap();
+        let sig = match Signature::try_from(signature) {
+            Ok(sig) => sig,
+            Err(err) => return Err(format!("unable to parse signature: {}", err)),
+        };
+
+        match sig.verify(&messages, &pk) {
+            Ok(x) => {
+                if x {
+                    Ok(())
+                } else {
+                    Err("invalid signature".to_string())
+                }
+            }
+            Err(err) => Err(format!("unexpected error: {}", err)),
+        }
     }
 }
 
@@ -87,8 +107,7 @@ pub mod test {
         assert!(matches!(keypair.secret_key, Some(_)));
     }
 
-    // #[test]
-    #[allow(dead_code)]
+    #[test]
     fn test_generate_g1_key() {
         let keypair = generate_g1_key(None);
 
@@ -103,5 +122,45 @@ pub mod test {
         let signature = keypair.sign(Payload::BufferArray(vec![payload]));
 
         assert_eq!(signature.len(), SIGNATURE_COMPRESSED_SIZE);
+    }
+
+    #[test]
+    fn test_g2_signature_and_verify() {
+        let keypair = generate_g2_key(None);
+        let payload = b"secret message".to_vec();
+
+        let signature = keypair.sign(Payload::BufferArray(vec![payload.clone()]));
+
+        let verify_result = keypair.verify(Payload::BufferArray(vec![payload.clone()]), signature.as_slice());
+
+        assert!(matches!(verify_result, Ok(_)));
+    }
+
+    #[test]
+    fn test_g2_signature_and_verify_fails_invalid_signature() {
+        let keypair = generate_g2_key(None);
+        let payload = b"secret message".to_vec();
+        let invalid_payload = b"incorrect secret message".to_vec();
+
+        let signature = keypair.sign(Payload::BufferArray(vec![payload.clone()]));
+
+        let verify_result = keypair.verify(
+            Payload::BufferArray(vec![invalid_payload.clone()]),
+            signature.as_slice(),
+        );
+
+        assert!(matches!(verify_result, Err(_)));
+    }
+
+    #[test]
+    fn test_g2_signature_and_verify_fails_signature_parse() {
+        let keypair = generate_g2_key(None);
+        let payload = b"secret message".to_vec();
+
+        let signature = keypair.sign(Payload::BufferArray(vec![payload.clone()]));
+
+        let verify_result = keypair.verify(Payload::BufferArray(vec![payload.clone()]), signature[1..].as_ref());
+
+        assert!(matches!(verify_result, Err(_)));
     }
 }

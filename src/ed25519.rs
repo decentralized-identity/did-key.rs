@@ -1,5 +1,5 @@
 use super::{generate_seed, Ecdsa};
-use crate::{AsymmetricKey, Payload};
+use crate::{AsymmetricKey, DIDKey, KeyMaterial, Payload};
 use ed25519_dalek::*;
 use std::convert::{TryFrom, TryInto};
 
@@ -23,6 +23,41 @@ impl Ed25519KeyPair {
             public_key: PublicKey::from_bytes(public_key).expect("invalid byte data"),
             secret_key: None,
         }
+    }
+}
+
+impl KeyMaterial for Ed25519KeyPair {
+    fn new() -> crate::DIDKey {
+        Self::new_from_seed(vec![].as_slice())
+    }
+
+    fn new_from_seed(seed: &[u8]) -> crate::DIDKey {
+        let secret_seed = generate_seed(&seed.to_vec()).expect("invalid seed");
+
+        let sk: SecretKey = SecretKey::from_bytes(&secret_seed).expect("cannot generate secret key");
+        let pk: PublicKey = (&sk).try_into().expect("cannot generate public key");
+
+        DIDKey::Ed25519(Ed25519KeyPair {
+            secret_key: Some(sk),
+            public_key: pk,
+        })
+    }
+
+    fn from_public_key(public_key: &[u8]) -> crate::DIDKey {
+        DIDKey::Ed25519(Ed25519KeyPair {
+            public_key: PublicKey::from_bytes(public_key).expect("invalid byte data"),
+            secret_key: None,
+        })
+    }
+
+    fn from_secret_key(secret_key: &[u8]) -> crate::DIDKey {
+        let sk: SecretKey = SecretKey::from_bytes(&secret_key).expect("cannot generate secret key");
+        let pk: PublicKey = (&sk).try_into().expect("cannot generate public key");
+
+        DIDKey::Ed25519(Ed25519KeyPair {
+            secret_key: Some(sk),
+            public_key: pk,
+        })
     }
 }
 
@@ -80,7 +115,7 @@ pub mod test {
         let secret_key = "6Lx39RyWn3syuozAe2WiPdAYn1ctMx17t8yrBMGFBmZy";
         let public_key = "6fioC1zcDPyPEL19pXRS2E4iJ46zH7xP6uSgAaPdwDrx";
 
-        let sk = DIDKey::from_seed(
+        let sk = DIDKey::new_from_seed(
             DIDKeyType::Ed25519,
             bs58::decode(secret_key).into_vec().unwrap().as_slice(),
         );

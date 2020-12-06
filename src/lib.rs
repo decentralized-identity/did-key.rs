@@ -1,8 +1,11 @@
 use crate::p256::P256Key;
 use bls12381::Bls12381KeyPair;
+use did_url::DID;
 use ed25519::Ed25519KeyPair;
-use std::convert::{TryFrom, TryInto};
-use url::Url;
+use std::{
+    convert::{TryFrom, TryInto},
+    str::FromStr,
+};
 use x25519::X25519Key;
 
 pub enum Payload {
@@ -25,6 +28,16 @@ impl From<Vec<u8>> for Payload {
 pub struct AsymmetricKey<P, S> {
     public_key: P,
     secret_key: Option<S>,
+}
+
+pub trait KeyMaterial {
+    fn new() -> DIDKey;
+
+    fn new_from_seed(seed: &[u8]) -> DIDKey;
+
+    fn from_public_key(public_key: &[u8]) -> DIDKey;
+
+    fn from_secret_key(public_key: &[u8]) -> DIDKey;
 }
 
 pub trait Ecdsa {
@@ -68,8 +81,8 @@ pub enum DIDKeyType {
 }
 
 impl DIDKey {
-    pub fn resolve(did_uri: &str) -> Result<DIDKey, String> {
-        DIDKey::try_from(did_uri.to_string())
+    pub fn resolve(did_uri: &str) -> Result<Self, String> {
+        DIDKey::try_from(did_uri)
     }
 
     pub fn fingerprint(&self) -> String {
@@ -84,7 +97,11 @@ impl DIDKey {
         format!("z{}", bs58::encode(data).into_string())
     }
 
-    pub fn from_seed(key_type: DIDKeyType, seed: &[u8]) -> DIDKey {
+    pub fn new(key_type: DIDKeyType) -> Self {
+        Self::new_from_seed(key_type, vec![].as_slice())
+    }
+
+    pub fn new_from_seed(key_type: DIDKeyType, seed: &[u8]) -> Self {
         match key_type {
             DIDKeyType::Ed25519 => DIDKey::Ed25519(Ed25519KeyPair::from_seed(seed)),
             DIDKeyType::X25519 => DIDKey::X25519(X25519Key::from_seed(seed)),
@@ -94,7 +111,7 @@ impl DIDKey {
         }
     }
 
-    pub fn from_public_key(key_type: DIDKeyType, seed: &[u8]) -> DIDKey {
+    pub fn from_public_key(key_type: DIDKeyType, seed: &[u8]) -> Self {
         match key_type {
             DIDKeyType::Ed25519 => DIDKey::Ed25519(Ed25519KeyPair::from_public_key(seed)),
             DIDKeyType::X25519 => DIDKey::X25519(X25519Key::from_public_key(seed)),
@@ -102,6 +119,13 @@ impl DIDKey {
             DIDKeyType::Bls12381G1 => todo!(),
             DIDKeyType::Bls12381G2 => todo!(),
         }
+    }
+
+    pub fn from_pub<T>() -> Self
+    where
+        T: Ecdsa + Ecdh
+    {
+        todo!()
     }
 
     pub fn key_exchange(&self, key: &Self) -> Vec<u8> {
@@ -154,13 +178,13 @@ impl DIDKey {
     }
 }
 
-impl TryFrom<String> for DIDKey {
+impl TryFrom<&str> for DIDKey {
     type Error = String;
 
-    fn try_from(did_uri: String) -> Result<Self, Self::Error> {
+    fn try_from(did_uri: &str) -> Result<Self, Self::Error> {
         // let re = Regex::new(r"did:key:[\w]*#[\w]*\??[\w]*").unwrap();
 
-        let url = match Url::parse(did_uri.as_ref()) {
+        let url = match DID::from_str(did_uri) {
             Ok(url) => url,
             Err(_) => return Err("couldn't parse DID URI".to_string()),
         };
@@ -170,12 +194,10 @@ impl TryFrom<String> for DIDKey {
             .map_or(url.to_string().replace("did:key:", ""), |x| x.to_string())
             .strip_prefix("z")
         {
-            Some(url) => {
-                match bs58::decode(url).into_vec() {
-                    Ok(url) => url,
-                    Err(_) => return Err("invalid base58 encoded data in DID URI".to_string()),
-                }
-            }
+            Some(url) => match bs58::decode(url).into_vec() {
+                Ok(url) => url,
+                Err(_) => return Err("invalid base58 encoded data in DID URI".to_string()),
+            },
             None => return Err("invalid URI data".to_string()),
         };
 
@@ -191,6 +213,7 @@ impl TryFrom<String> for DIDKey {
 }
 
 pub mod bls12381;
+pub mod diddoc;
 pub mod ed25519;
 pub mod p256;
 pub mod x25519;
@@ -224,7 +247,7 @@ pub mod test {
     fn test_key_from_uri() {
         let uri = "did:key:z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL";
 
-        let key = DIDKey::try_from(uri.to_string());
+        let key = DIDKey::resolve(uri);
 
         assert!(matches!(key.unwrap(), DIDKey::Ed25519(_)));
     }
@@ -234,8 +257,28 @@ pub mod test {
         let uri =
             "did:key:z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL#z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL";
 
-        let key = DIDKey::try_from(uri.to_string());
+        let key = DIDKey::resolve(uri);
 
         assert!(matches!(key.unwrap(), DIDKey::Ed25519(_)));
+    }
+
+    #[test]
+    fn test_generate_new_key() {
+        let key = DIDKey::new(DIDKeyType::P256);
+        let message = b"secret message";
+
+        println!("{}", key.fingerprint());
+
+        let signature = key.sign(Payload::Buffer(message.to_vec()));
+        let valid = key.verify(Payload::Buffer(message.to_vec()), &signature);
+
+        assert!(valid);
+    }
+
+    #[test]
+    fn test_key_resolve() {
+        let key = DIDKey::resolve("did:key:z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL").unwrap();
+
+        assert!(matches!(key, DIDKey::Ed25519(_)));
     }
 }
