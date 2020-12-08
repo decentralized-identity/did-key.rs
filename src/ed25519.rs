@@ -1,5 +1,6 @@
 use super::{generate_seed, Ecdsa};
-use crate::{AsymmetricKey, DIDKey, KeyMaterial, Payload};
+use crate::{x25519::*, AsymmetricKey, DIDCore, DIDKey, Document, KeyMaterial, Payload, VerificationMethod};
+use curve25519_dalek::edwards::CompressedEdwardsY;
 use ed25519_dalek::*;
 use std::convert::{TryFrom, TryInto};
 
@@ -22,6 +23,64 @@ impl Ed25519KeyPair {
         Ed25519KeyPair {
             public_key: PublicKey::from_bytes(public_key).expect("invalid byte data"),
             secret_key: None,
+        }
+    }
+
+    pub fn get_x25519(&self) -> X25519KeyPair {
+        match &self.secret_key {
+            Some(sk) => {
+                let hash = Sha512::digest(&sk.as_ref()[..32]);
+                let mut output = [0u8; 32];
+                output.copy_from_slice(&hash[..32]);
+                output[0] &= 248;
+                output[31] &= 127;
+                output[31] |= 64;
+
+                X25519KeyPair::from_seed(&output)
+            }
+            None => {
+                let var_name: [u8; 32] = self.public_key.as_bytes().to_vec().as_slice().try_into().unwrap();
+                let compressed = CompressedEdwardsY(var_name).decompress().unwrap();
+                let montgomery = compressed.to_montgomery();
+
+                X25519KeyPair::from_public_key(montgomery.as_bytes())
+            }
+        }
+    }
+}
+
+impl DIDCore for Ed25519KeyPair {
+    fn get_fingerprint(&self) -> String {
+        let codec: &[u8] = &[0xed, 0x1];
+        let data = [codec, self.public_key.as_bytes()].concat();
+        format!("z{}", bs58::encode(data).into_string())
+    }
+
+    fn to_verification_method(&self, controller: &str) -> crate::VerificationMethod {
+        VerificationMethod {
+            id: format!("{}#{}", controller, self.get_fingerprint()),
+            method_type: "Ed25519VerificationKey2018".to_string(),
+            controller: controller.to_string(),
+            public_key_base58: bs58::encode(self.public_key.as_bytes()).into_string(),
+        }
+    }
+
+    fn get_did_document(&self) -> crate::Document {
+        let fingerprint = self.get_fingerprint();
+        let controller = format!("did:key:{}", fingerprint.clone());
+
+        let ed_vm = self.to_verification_method(&controller);
+        let x_vm = self.get_x25519().to_verification_method(&controller);
+
+        Document {
+            context: "https://www.w3.org/ns/did/v1".to_string(),
+            id: controller.to_string(),
+            key_aggrement: Some(vec![x_vm.id.clone()]),
+            authentication: Some(vec![ed_vm.id.clone()]),
+            assertion_method: Some(vec![ed_vm.id.clone()]),
+            capability_delegation: Some(vec![ed_vm.id.clone()]),
+            capability_invocation: Some(vec![ed_vm.id.clone()]),
+            verification_method: vec![ed_vm, x_vm],
         }
     }
 }
@@ -130,5 +189,15 @@ pub mod test {
         let is_valud = pk.verify(Payload::Buffer(message.to_vec()), &signature);
 
         assert!(is_valud);
+    }
+
+    #[test]
+    fn test_did_doc() {
+        let secret_key = "6Lx39RyWn3syuozAe2WiPdAYn1ctMx17t8yrBMGFBmZy";
+        let key = Ed25519KeyPair::from_seed(bs58::decode(secret_key).into_vec().unwrap().as_slice());
+
+        let _ = key.get_did_document();
+
+        assert!(true)
     }
 }

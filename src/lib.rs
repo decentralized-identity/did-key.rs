@@ -1,12 +1,13 @@
-use crate::p256::P256Key;
+use crate::p256::P256KeyPair;
 use bls12381::Bls12381KeyPair;
 use did_url::DID;
 use ed25519::Ed25519KeyPair;
+use serde::{Deserialize, Serialize};
 use std::{
     convert::{TryFrom, TryInto},
     str::FromStr,
 };
-use x25519::X25519Key;
+use x25519::X25519KeyPair;
 
 pub enum Payload {
     Buffer(Vec<u8>),
@@ -64,10 +65,42 @@ pub(crate) fn generate_seed(initial_seed: &[u8]) -> Result<[u8; 32], &str> {
     Ok(seed)
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct Document {
+    #[serde(rename = "@context")]
+    context: String,
+    id: String,
+    assertion_method: Option<Vec<String>>,
+    authentication: Option<Vec<String>>,
+    capability_delegation: Option<Vec<String>>,
+    capability_invocation: Option<Vec<String>>,
+    key_aggrement: Option<Vec<String>>,
+    verification_method: Vec<VerificationMethod>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct VerificationMethod {
+    id: String,
+    #[serde(rename = "type")]
+    method_type: String,
+    controller: String,
+    public_key_base58: String,
+}
+
+pub trait DIDCore {
+    fn to_verification_method(&self, controller: &str) -> VerificationMethod;
+
+    fn get_did_document(&self) -> Document;
+
+    fn get_fingerprint(&self) -> String;
+}
+
 pub enum DIDKey {
     Ed25519(Ed25519KeyPair),
-    X25519(X25519Key),
-    P256(P256Key),
+    X25519(X25519KeyPair),
+    P256(P256KeyPair),
     Bls12381G1(Bls12381KeyPair),
     Bls12381G2(Bls12381KeyPair),
 }
@@ -97,6 +130,16 @@ impl DIDKey {
         format!("z{}", bs58::encode(data).into_string())
     }
 
+    pub fn to_did_document(&self) -> Document {
+        match self {
+            DIDKey::Ed25519(x) => x.get_did_document(),
+            DIDKey::X25519(_) => todo!(),
+            DIDKey::P256(_) => todo!(),
+            DIDKey::Bls12381G1(_) => todo!(),
+            DIDKey::Bls12381G2(_) => todo!(),
+        }
+    }
+
     pub fn new(key_type: DIDKeyType) -> Self {
         Self::new_from_seed(key_type, vec![].as_slice())
     }
@@ -104,8 +147,8 @@ impl DIDKey {
     pub fn new_from_seed(key_type: DIDKeyType, seed: &[u8]) -> Self {
         match key_type {
             DIDKeyType::Ed25519 => DIDKey::Ed25519(Ed25519KeyPair::from_seed(seed)),
-            DIDKeyType::X25519 => DIDKey::X25519(X25519Key::from_seed(seed)),
-            DIDKeyType::P256 => DIDKey::P256(P256Key::from_seed(seed)),
+            DIDKeyType::X25519 => DIDKey::X25519(X25519KeyPair::from_seed(seed)),
+            DIDKeyType::P256 => DIDKey::P256(P256KeyPair::from_seed(seed)),
             DIDKeyType::Bls12381G1 => todo!(),
             DIDKeyType::Bls12381G2 => todo!(),
         }
@@ -114,8 +157,8 @@ impl DIDKey {
     pub fn from_public_key(key_type: DIDKeyType, seed: &[u8]) -> Self {
         match key_type {
             DIDKeyType::Ed25519 => DIDKey::Ed25519(Ed25519KeyPair::from_public_key(seed)),
-            DIDKeyType::X25519 => DIDKey::X25519(X25519Key::from_public_key(seed)),
-            DIDKeyType::P256 => DIDKey::P256(P256Key::from_public_key(seed)),
+            DIDKeyType::X25519 => DIDKey::X25519(X25519KeyPair::from_public_key(seed)),
+            DIDKeyType::P256 => DIDKey::P256(P256KeyPair::from_public_key(seed)),
             DIDKeyType::Bls12381G1 => todo!(),
             DIDKeyType::Bls12381G2 => todo!(),
         }
@@ -123,7 +166,7 @@ impl DIDKey {
 
     pub fn from_pub<T>() -> Self
     where
-        T: Ecdsa + Ecdh
+        T: Ecdsa + Ecdh,
     {
         todo!()
     }
@@ -213,7 +256,6 @@ impl TryFrom<&str> for DIDKey {
 }
 
 pub mod bls12381;
-pub mod diddoc;
 pub mod ed25519;
 pub mod p256;
 pub mod x25519;
@@ -241,6 +283,16 @@ pub mod test {
         let is_valid = pk.verify(Payload::Buffer(message.to_vec()), &signature);
 
         assert!(is_valid);
+    }
+
+    #[test]
+    fn test_did_doc() {
+        let key = DIDKey::new(DIDKeyType::Ed25519);
+        let did_doc = key.to_did_document();
+
+        let _ = serde_json::to_string_pretty(&did_doc).unwrap();
+
+        assert!(true)
     }
 
     #[test]

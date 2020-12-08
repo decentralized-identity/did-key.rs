@@ -6,22 +6,22 @@ use p256::{
 };
 use std::convert::TryFrom;
 
-pub type P256Key = AsymmetricKey<VerifyKey, SigningKey>;
+pub type P256KeyPair = AsymmetricKey<VerifyKey, SigningKey>;
 
-impl std::fmt::Debug for P256Key {
+impl std::fmt::Debug for P256KeyPair {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("{:?}", self.public_key))
     }
 }
 
-impl P256Key {
+impl P256KeyPair {
     pub fn from_seed(seed: &[u8]) -> Self {
         let secret_seed = generate_seed(&seed.to_vec()).expect("invalid seed");
 
         let sk = SigningKey::new(&secret_seed).expect("Couldn't create key");
         let pk = VerifyKey::from(&sk);
 
-        P256Key {
+        P256KeyPair {
             public_key: pk, //.to_encoded_point(false),
             secret_key: Some(sk),
         }
@@ -36,7 +36,7 @@ impl P256Key {
                 pkk
             }
         };
-        P256Key {
+        P256KeyPair {
             secret_key: None, //.to_encoded_point(false),
             public_key: VerifyKey::from_encoded_point(&EncodedPoint::from_bytes(pk.as_slice()).expect("invalid key"))
                 .expect("invalid point"),
@@ -44,7 +44,7 @@ impl P256Key {
     }
 }
 
-impl Ecdsa for P256Key {
+impl Ecdsa for P256KeyPair {
     type Err = String;
 
     fn sign(&self, payload: Payload) -> Vec<u8> {
@@ -80,7 +80,7 @@ pub mod test {
     use super::*;
     #[test]
     fn test_demo() {
-        let key = P256Key::from_seed(vec![].as_slice());
+        let key = P256KeyPair::from_seed(vec![].as_slice());
         let message = b"super secret message".to_vec();
 
         let signature = key.sign(Payload::Buffer(message.clone()));

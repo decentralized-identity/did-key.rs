@@ -17,7 +17,7 @@ It was originally designed for use with [DIDComm Extension for gRPC](https://git
 [Install from crates.io](https://crates.io/crates/did-key)
 
 ```rust
-did-key = "0.0.1"
+did-key = "0.0.2"
 ```
 
 To resolve a did formatted URI:
@@ -47,6 +47,53 @@ let signature = key.sign(Payload::Buffer(message.to_vec()));
 let valid = key.verify(Payload::Buffer(message.to_vec()), &signature);
 
 assert!(valid);
+```
+
+Create DID Document
+
+```rust
+let key = DIDKey::new(DIDKeyType::Ed25519);
+let did_doc = key.to_did_document();
+
+let doc_json = serde_json::to_string_pretty(&did_doc).unwrap();
+```
+
+> The output `Document` struct will create JSON+LD in compact form.
+
+```json
+{
+  "@context": "https://www.w3.org/ns/did/v1",
+  "id": "did:key:z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL",
+  "assertionMethod": [
+    "did:key:z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL#z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL"
+  ],
+  "authentication": [
+    "did:key:z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL#z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL"
+  ],
+  "capabilityDelegation": [
+    "did:key:z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL#z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL"
+  ],
+  "capabilityInvocation": [
+    "did:key:z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL#z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL"
+  ],
+  "keyAggrement": [
+    "did:key:z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL#z6LSrdqo4M24WRDJj1h2hXxgtDTyzjjKCiyapYVgrhwZAySn"
+  ],
+  "verificationMethod": [
+    {
+      "id": "did:key:z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL#z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL",
+      "type": "Ed25519VerificationKey2018",
+      "controller": "did:key:z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL",
+      "publicKeyBase58": "6fioC1zcDPyPEL19pXRS2E4iJ46zH7xP6uSgAaPdwDrx"
+    },
+    {
+      "id": "did:key:z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL#z6LSrdqo4M24WRDJj1h2hXxgtDTyzjjKCiyapYVgrhwZAySn",
+      "type": "X25519KeyAgreementKey2019",
+      "controller": "did:key:z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL",
+      "publicKeyBase58": "FxfdY3DCQxVZddKGAtSjZdFW9bCCW7oRwZn1NFJ2Tbg2"
+    }
+  ]
+}
 ```
 
 ## License
