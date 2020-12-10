@@ -1,7 +1,7 @@
+use crate::bls12381::Bls12381KeyPair;
+use crate::ed25519::Ed25519KeyPair;
 use crate::p256::P256KeyPair;
-use bls12381::Bls12381KeyPair;
 use did_url::DID;
-use ed25519::Ed25519KeyPair;
 use serde::{Deserialize, Serialize};
 use std::{
     convert::{TryFrom, TryInto},
@@ -65,38 +65,6 @@ pub(crate) fn generate_seed(initial_seed: &[u8]) -> Result<[u8; 32], &str> {
     Ok(seed)
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct Document {
-    #[serde(rename = "@context")]
-    context: String,
-    id: String,
-    assertion_method: Option<Vec<String>>,
-    authentication: Option<Vec<String>>,
-    capability_delegation: Option<Vec<String>>,
-    capability_invocation: Option<Vec<String>>,
-    key_aggrement: Option<Vec<String>>,
-    verification_method: Vec<VerificationMethod>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct VerificationMethod {
-    id: String,
-    #[serde(rename = "type")]
-    method_type: String,
-    controller: String,
-    public_key_base58: String,
-}
-
-pub trait DIDCore {
-    fn to_verification_method(&self, controller: &str) -> VerificationMethod;
-
-    fn get_did_document(&self) -> Document;
-
-    fn get_fingerprint(&self) -> String;
-}
-
 pub enum DIDKey {
     Ed25519(Ed25519KeyPair),
     X25519(X25519KeyPair),
@@ -105,6 +73,7 @@ pub enum DIDKey {
     Bls12381G2(Bls12381KeyPair),
 }
 
+#[derive(Serialize, Deserialize, Debug)]
 pub enum DIDKeyType {
     Ed25519,
     X25519,
@@ -133,7 +102,7 @@ impl DIDKey {
     pub fn to_did_document(&self) -> Document {
         match self {
             DIDKey::Ed25519(x) => x.get_did_document(),
-            DIDKey::X25519(_) => todo!(),
+            DIDKey::X25519(x) => x.get_did_document(),
             DIDKey::P256(_) => todo!(),
             DIDKey::Bls12381G1(_) => todo!(),
             DIDKey::Bls12381G2(_) => todo!(),
@@ -256,13 +225,15 @@ impl TryFrom<&str> for DIDKey {
 }
 
 pub mod bls12381;
+mod didcore;
 pub mod ed25519;
 pub mod p256;
 pub mod x25519;
+pub use didcore::{ContentType, DIDCore, Document, VerificationMethod, CONTENT_TYPE};
 
 #[cfg(test)]
 pub mod test {
-    use crate::{DIDKey, Payload};
+    use crate::{didcore::ContentType, DIDKey, Payload};
 
     use super::*;
     #[test]
@@ -286,11 +257,33 @@ pub mod test {
     }
 
     #[test]
-    fn test_did_doc() {
+    fn test_did_doc_ld() {
+        unsafe {
+            didcore::CONTENT_TYPE = ContentType::JsonLd;
+        }
+
         let key = DIDKey::new(DIDKeyType::Ed25519);
         let did_doc = key.to_did_document();
 
-        let _ = serde_json::to_string_pretty(&did_doc).unwrap();
+        let json = serde_json::to_string_pretty(&did_doc).unwrap();
+
+        println!("{}", json);
+
+        assert!(true)
+    }
+
+    #[test]
+    fn test_did_doc_json() {
+        unsafe {
+            didcore::CONTENT_TYPE = ContentType::Json;
+        }
+
+        let key = DIDKey::new(DIDKeyType::X25519);
+        let did_doc = key.to_did_document();
+
+        let json = serde_json::to_string_pretty(&did_doc).unwrap();
+
+        println!("{}", json);
 
         assert!(true)
     }

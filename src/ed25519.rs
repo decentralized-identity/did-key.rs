@@ -1,5 +1,9 @@
 use super::{generate_seed, Ecdsa};
-use crate::{x25519::*, AsymmetricKey, DIDCore, DIDKey, Document, KeyMaterial, Payload, VerificationMethod};
+use crate::{
+    didcore::{DIDCore, Document, VerificationMethod},
+    x25519::X25519KeyPair,
+    AsymmetricKey, DIDKey, DIDKeyType, KeyMaterial, Payload,
+};
 use curve25519_dalek::edwards::CompressedEdwardsY;
 use ed25519_dalek::*;
 use std::convert::{TryFrom, TryInto};
@@ -56,16 +60,17 @@ impl DIDCore for Ed25519KeyPair {
         format!("z{}", bs58::encode(data).into_string())
     }
 
-    fn to_verification_method(&self, controller: &str) -> crate::VerificationMethod {
+    fn to_verification_method(&self, controller: &str) -> VerificationMethod {
         VerificationMethod {
             id: format!("{}#{}", controller, self.get_fingerprint()),
-            method_type: "Ed25519VerificationKey2018".to_string(),
+            key_type: DIDKeyType::Ed25519,
             controller: controller.to_string(),
-            public_key_base58: bs58::encode(self.public_key.as_bytes()).into_string(),
+            public_key: Some(self.public_key.as_bytes().to_vec()),
+            private_key: None,
         }
     }
 
-    fn get_did_document(&self) -> crate::Document {
+    fn get_did_document(&self) -> Document {
         let fingerprint = self.get_fingerprint();
         let controller = format!("did:key:{}", fingerprint.clone());
 

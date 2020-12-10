@@ -1,4 +1,4 @@
-use crate::{ed25519::Ed25519KeyPair, AsymmetricKey, DIDCore, VerificationMethod};
+use crate::{didcore::*, ed25519::Ed25519KeyPair, AsymmetricKey, DIDKeyType};
 
 use super::{generate_seed, Ecdh};
 use std::convert::TryInto;
@@ -46,17 +46,32 @@ impl From<Ed25519KeyPair> for X25519KeyPair {
 }
 
 impl DIDCore for X25519KeyPair {
-    fn to_verification_method(&self, controller: &str) -> crate::VerificationMethod {
+    fn to_verification_method(&self, controller: &str) -> VerificationMethod {
         VerificationMethod {
             id: format!("{}#{}", controller, self.get_fingerprint()),
-            method_type: "X25519KeyAgreementKey2019".to_string(),
+            key_type: DIDKeyType::X25519,
             controller: controller.to_string(),
-            public_key_base58: bs58::encode(self.public_key.as_bytes()).into_string(),
+            public_key: Some(self.public_key.as_bytes().to_vec()),
+            private_key: None,
         }
     }
 
-    fn get_did_document(&self) -> crate::Document {
-        todo!()
+    fn get_did_document(&self) -> Document {
+        let fingerprint = self.get_fingerprint();
+        let controller = format!("did:key:{}", fingerprint.clone());
+
+        let vm = self.to_verification_method(&controller);
+
+        Document {
+            context: "https://www.w3.org/ns/did/v1".to_string(),
+            id: controller.to_string(),
+            key_aggrement: Some(vec![vm.id.clone()]),
+            authentication: None,
+            assertion_method: None,
+            capability_delegation: None,
+            capability_invocation: None,
+            verification_method: vec![vm],
+        }
     }
 
     fn get_fingerprint(&self) -> String {

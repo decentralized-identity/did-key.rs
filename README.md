@@ -58,7 +58,13 @@ let did_doc = key.to_did_document();
 let doc_json = serde_json::to_string_pretty(&did_doc).unwrap();
 ```
 
-> The output `Document` struct will create JSON+LD in compact form.
+The default json format is JSON-LD. To serialize a document using JSON format (using JWK key types), toggle the `CONTENT_TYPE` static.
+
+```rust
+unsafe { did_key::CONTENT_TYPE = did_key::ContentType::Json; }
+```
+
+Example JSON-LD output
 
 ```json
 {
@@ -91,6 +97,30 @@ let doc_json = serde_json::to_string_pretty(&did_doc).unwrap();
       "type": "X25519KeyAgreementKey2019",
       "controller": "did:key:z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL",
       "publicKeyBase58": "FxfdY3DCQxVZddKGAtSjZdFW9bCCW7oRwZn1NFJ2Tbg2"
+    }
+  ]
+}
+```
+
+Example JSON output
+
+```json
+{
+  "@context": "https://www.w3.org/ns/did/v1",
+  "id": "did:key:z6LSfaBhhoYmAMX11m9xYCaeaU99KPtYnzHpsWD6iNWbJDr2",
+  "keyAggrement": [
+    "did:key:z6LSfaBhhoYmAMX11m9xYCaeaU99KPtYnzHpsWD6iNWbJDr2#z6LSfaBhhoYmAMX11m9xYCaeaU99KPtYnzHpsWD6iNWbJDr2"
+  ],
+  "verificationMethod": [
+    {
+      "id": "did:key:z6LSfaBhhoYmAMX11m9xYCaeaU99KPtYnzHpsWD6iNWbJDr2#z6LSfaBhhoYmAMX11m9xYCaeaU99KPtYnzHpsWD6iNWbJDr2",
+      "controller": "did:key:z6LSfaBhhoYmAMX11m9xYCaeaU99KPtYnzHpsWD6iNWbJDr2",
+      "type": "JsonWebKey2020",
+      "publicKeyJwk": {
+        "kty": "OKP",
+        "crv": "X25519",
+        "x": "OeXe54Y0Dnk0WNWsQ6PqKUBB2x6bos0DZ_WkdFNdt3M"
+      }
     }
   ]
 }
