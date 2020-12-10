@@ -82,7 +82,7 @@ Example JSON-LD output
   "capabilityInvocation": [
     "did:key:z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL#z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL"
   ],
-  "keyAggrement": [
+  "keyAgreement": [
     "did:key:z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL#z6LSrdqo4M24WRDJj1h2hXxgtDTyzjjKCiyapYVgrhwZAySn"
   ],
   "verificationMethod": [
@@ -108,7 +108,7 @@ Example JSON output
 {
   "@context": "https://www.w3.org/ns/did/v1",
   "id": "did:key:z6LSfaBhhoYmAMX11m9xYCaeaU99KPtYnzHpsWD6iNWbJDr2",
-  "keyAggrement": [
+  "keyAgreement": [
     "did:key:z6LSfaBhhoYmAMX11m9xYCaeaU99KPtYnzHpsWD6iNWbJDr2#z6LSfaBhhoYmAMX11m9xYCaeaU99KPtYnzHpsWD6iNWbJDr2"
   ],
   "verificationMethod": [

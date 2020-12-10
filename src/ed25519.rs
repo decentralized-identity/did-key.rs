@@ -2,7 +2,7 @@ use super::{generate_seed, Ecdsa};
 use crate::{
     didcore::{DIDCore, Document, VerificationMethod},
     x25519::X25519KeyPair,
-    AsymmetricKey, DIDKey, DIDKeyType, KeyMaterial, Payload,
+    AsymmetricKey, DIDKey, DIDKeyTypeInternal, KeyMaterial, Payload,
 };
 use curve25519_dalek::edwards::CompressedEdwardsY;
 use ed25519_dalek::*;
@@ -60,32 +60,32 @@ impl DIDCore for Ed25519KeyPair {
         format!("z{}", bs58::encode(data).into_string())
     }
 
-    fn to_verification_method(&self, controller: &str) -> VerificationMethod {
-        VerificationMethod {
+    fn to_verification_method(&self, controller: &str) -> Vec<VerificationMethod> {
+        vec![VerificationMethod {
             id: format!("{}#{}", controller, self.get_fingerprint()),
-            key_type: DIDKeyType::Ed25519,
+            key_type: DIDKeyTypeInternal::Ed25519,
             controller: controller.to_string(),
             public_key: Some(self.public_key.as_bytes().to_vec()),
-            private_key: None,
-        }
+            private_key: self.secret_key.as_ref().map(|x| x.as_bytes().to_vec()),
+        }]
     }
 
     fn get_did_document(&self) -> Document {
         let fingerprint = self.get_fingerprint();
         let controller = format!("did:key:{}", fingerprint.clone());
 
-        let ed_vm = self.to_verification_method(&controller);
-        let x_vm = self.get_x25519().to_verification_method(&controller);
+        let ed_vm = &self.to_verification_method(&controller)[0];
+        let x_vm = &self.get_x25519().to_verification_method(&controller)[0];
 
         Document {
             context: "https://www.w3.org/ns/did/v1".to_string(),
             id: controller.to_string(),
-            key_aggrement: Some(vec![x_vm.id.clone()]),
+            key_agreement: Some(vec![x_vm.id.clone()]),
             authentication: Some(vec![ed_vm.id.clone()]),
             assertion_method: Some(vec![ed_vm.id.clone()]),
             capability_delegation: Some(vec![ed_vm.id.clone()]),
             capability_invocation: Some(vec![ed_vm.id.clone()]),
-            verification_method: vec![ed_vm, x_vm],
+            verification_method: vec![ed_vm.clone(), x_vm.clone()],
         }
     }
 }
