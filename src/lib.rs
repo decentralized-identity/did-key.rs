@@ -1,4 +1,4 @@
-use crate::{bls12381::Bls12381KeyPair, ed25519::Ed25519KeyPair, p256::P256KeyPair, x25519::X25519KeyPair};
+use crate::{bls12381::Bls12381KeyPair, ed25519::Ed25519KeyPair, p256::P256KeyPair, x25519::X25519KeyPair, secp256k1::Secp256k1KeyPair};
 use did_url::DID;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -11,6 +11,7 @@ pub enum DIDKey {
     X25519(X25519KeyPair),
     P256(P256KeyPair),
     Bls12381G1G2(Bls12381KeyPair),
+    Secp256k1(Secp256k1KeyPair),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -19,6 +20,7 @@ pub enum DIDKeyType {
     X25519,
     P256,
     Bls12381G1G2,
+    Secp256k1,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -28,6 +30,7 @@ pub(crate) enum DIDKeyTypeInternal {
     P256,
     Bls12381G1,
     Bls12381G2,
+    Secp256k1,
 }
 
 pub enum Payload {
@@ -97,6 +100,7 @@ impl DIDKey {
             DIDKey::X25519(_) => &[0xec, 0x1],
             DIDKey::P256(_) => &[0x12, 0x0, 0x1],
             DIDKey::Bls12381G1G2(_) => &[0xee, 0x1],
+            DIDKey::Secp256k1(_) => &[0xe7, 0x1], //why do they all end with 0x1?
         };
         let data = [codec, self.public_key().as_slice()].concat();
         format!("z{}", bs58::encode(data).into_string())
@@ -108,6 +112,7 @@ impl DIDKey {
             DIDKey::X25519(x) => x.get_did_document(),
             DIDKey::P256(_) => todo!(),
             DIDKey::Bls12381G1G2(x) => x.get_did_document(),
+            DIDKey::Secp256k1(_) => todo!(),
         }
     }
 
@@ -121,6 +126,7 @@ impl DIDKey {
             DIDKeyType::X25519 => DIDKey::X25519(X25519KeyPair::from_seed(seed)),
             DIDKeyType::P256 => DIDKey::P256(P256KeyPair::from_seed(seed)),
             DIDKeyType::Bls12381G1G2 => DIDKey::Bls12381G1G2(Bls12381KeyPair::from_seed(seed)),
+            DIDKeyType::Secp256k1 => DIDKey::Secp256k1(Secp256k1KeyPair::from_seed(seed)),
         }
     }
 
@@ -130,6 +136,7 @@ impl DIDKey {
             DIDKeyType::X25519 => DIDKey::X25519(X25519KeyPair::from_public_key(public_key_bytes)),
             DIDKeyType::P256 => DIDKey::P256(P256KeyPair::from_public_key(public_key_bytes)),
             DIDKeyType::Bls12381G1G2 => DIDKey::Bls12381G1G2(Bls12381KeyPair::from_public_key(public_key_bytes)),
+            DIDKeyType::Secp256k1 => DIDKey::Secp256k1(Secp256k1KeyPair::from_public_key(public_key_bytes)),
         }
     }
 
@@ -146,6 +153,7 @@ impl DIDKey {
             DIDKey::Ed25519(x) => x.sign(payload),
             DIDKey::P256(x) => x.sign(payload),
             DIDKey::Bls12381G1G2(x) => x.sign(payload),
+            DIDKey::Secp256k1(x) => x.sign(payload),
             _ => unimplemented!(),
         }
     }
@@ -155,6 +163,7 @@ impl DIDKey {
             DIDKey::Ed25519(x) => x.verify(payload, signature.as_slice()),
             DIDKey::P256(x) => x.verify(payload, signature.as_slice()),
             DIDKey::Bls12381G1G2(x) => x.verify(payload, signature.as_slice()),
+            DIDKey::Secp256k1(x) => x.verify(payload, signature.as_slice()),
             _ => unimplemented!(),
         }
         .map_or(false, |()| true)
@@ -171,6 +180,7 @@ impl DIDKey {
             ]
             .concat()
             .to_vec(),
+            DIDKey::Secp256k1(x) => x.public_key.serialize().to_vec(),
         }
     }
 
@@ -180,6 +190,7 @@ impl DIDKey {
             DIDKey::X25519(key) => (&key.secret_key).as_ref().map_or(None, |x| Some(x.to_bytes().to_vec())),
             DIDKey::P256(key) => (&key.secret_key).as_ref().map_or(None, |x| Some(x.to_bytes().to_vec())),
             DIDKey::Bls12381G1G2(_) => todo!(),
+            DIDKey::Secp256k1(key) => (&key.secret_key).as_ref().map_or(None, |x| Some(x.serialize().to_vec())),
         }
     }
 }
@@ -212,6 +223,7 @@ impl TryFrom<&str> for DIDKey {
             [0xec, 0x1] => DIDKey::from_public_key(DIDKeyType::X25519, &pub_key[2..]),
             [0xea, 0x1] => DIDKey::from_public_key(DIDKeyType::Bls12381G1G2, &pub_key[2..]),
             [0x12, 0x0] => DIDKey::from_public_key(DIDKeyType::P256, &pub_key[3..]),
+            [0xe7, 0x0] => DIDKey::from_public_key(DIDKeyType::Secp256k1, &pub_key[2..]),
             _ => unimplemented!("unsupported key type"),
         });
     }
@@ -222,6 +234,7 @@ mod didcore;
 pub mod ed25519;
 pub mod p256;
 pub mod x25519;
+pub mod secp256k1;
 pub use didcore::{ContentType, DIDCore, Document, VerificationMethod, CONTENT_TYPE};
 
 #[cfg(test)]

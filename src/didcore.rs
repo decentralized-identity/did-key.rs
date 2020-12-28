@@ -94,6 +94,7 @@ impl Serialize for VerificationMethod {
                             DIDKeyTypeInternal::P256 => "P-256",
                             DIDKeyTypeInternal::Bls12381G1 => "BLS12381_G1",
                             DIDKeyTypeInternal::Bls12381G2 => "BLS12381_G2",
+                            DIDKeyTypeInternal::Secp256k1 => "Secp256k1",
                         }
                         .to_string(),
                         x: self.public_key.as_ref().map(|key| base64::encode_config(key, config)),
