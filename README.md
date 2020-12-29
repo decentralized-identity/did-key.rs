@@ -10,6 +10,7 @@ It was originally designed for use with [DIDComm Extension for gRPC](https://git
 - Ed25519
 - X25519
 - P256
+- SECP256K1
 - BLS12381G1/G2
 
 ## Usage
@@ -17,7 +18,7 @@ It was originally designed for use with [DIDComm Extension for gRPC](https://git
 [Install from crates.io](https://crates.io/crates/did-key)
 
 ```rust
-did-key = "0.0.2"
+did-key = "0.0.3"
 ```
 
 To resolve a did formatted URI:
@@ -124,6 +125,14 @@ Example JSON output
     }
   ]
 }
+```
+
+## Benchmarks
+
+Crate includes some basic benchmarks for key generation and exchange comparison, using `criterion`. To run the benchmarks:
+
+```bash
+cargo bench
 ```
 
 ## License

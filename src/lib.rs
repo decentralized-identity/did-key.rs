@@ -143,6 +143,7 @@ impl DIDKey {
     pub fn key_exchange(&self, key: &Self) -> Vec<u8> {
         match (self, key) {
             (DIDKey::X25519(sk), DIDKey::X25519(pk)) => sk.key_exchange(pk),
+            (DIDKey::Secp256k1(sk), DIDKey::Secp256k1(pk)) => sk.key_exchange(pk),
             (DIDKey::P256(_sk), DIDKey::P256(_pk)) => todo!(),
             _ => unimplemented!(),
         }

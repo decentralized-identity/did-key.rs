@@ -1,6 +1,6 @@
 [package]
 name = "did-key"
-version = "0.0.2"
+version = "0.0.3"
 authors = ["Tomislav Markovski <tomislav@trinsic.id>"]
 edition = "2018"
 license = "Apache-2.0"
@@ -32,3 +32,10 @@ libsecp256k1 = "0.3.5"
 [dependencies.p256]
 version = "0.5.2"
 features = ["ecdsa", "ecdh"]
+
+[dev-dependencies]
+criterion = "0.3"
+
+[[bench]]
+name = "my_benchmark"
+harness = false
