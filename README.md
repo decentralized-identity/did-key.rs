@@ -54,15 +54,23 @@ Create DID Document
 
 ```rust
 let key = DIDKey::new(DIDKeyType::Ed25519);
-let did_doc = key.to_did_document();
+let did_doc = key.to_did_document(Config::default());
 
 let doc_json = serde_json::to_string_pretty(&did_doc).unwrap();
 ```
 
-The default json format is JSON-LD. To serialize a document using JSON format (using JWK key types), toggle the `CONTENT_TYPE` static.
+The default json format for key data is JSON-LD. To serialize a document using JOSE key format (using JWK), configure the input
+parameter or use one of the static configurations ex. `CONFIG_JOSE_PUBLIC`.
 
 ```rust
-unsafe { did_key::CONTENT_TYPE = did_key::ContentType::Json; }
+let did_doc = key.to_did_document(Config {
+  use_jose_format: true,    // toggle to switch between LD and JOSE key format
+  serialize_secrets: false  // toggle to serialize private keys
+});
+
+// or use predefined configs
+
+let did_doc = key.to_did_document(CONFIG_JOSE_PUBLIC);
 ```
 
 Example JSON-LD output

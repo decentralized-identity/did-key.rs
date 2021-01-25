@@ -1,4 +1,4 @@
-use crate::{didcore::*, ed25519::Ed25519KeyPair, AsymmetricKey, DIDKeyTypeInternal};
+use crate::{didcore::*, ed25519::Ed25519KeyPair, AsymmetricKey};
 
 use super::{generate_seed, Ecdh};
 use std::convert::TryInto;
@@ -46,21 +46,36 @@ impl From<Ed25519KeyPair> for X25519KeyPair {
 }
 
 impl DIDCore for X25519KeyPair {
-    fn to_verification_method(&self, controller: &str) -> Vec<VerificationMethod> {
+    fn to_verification_method(&self, config: Config, controller: &str) -> Vec<VerificationMethod> {
         vec![VerificationMethod {
-            id: format!("{}#{}", controller, self.get_fingerprint()),
-            key_type: DIDKeyTypeInternal::X25519,
+            id: format!("{}#{}", controller, self.fingerprint()),
+            key_type: match config.use_jose_format {
+                false => "X25519KeyAgreementKey2019".into(),
+                true => "OKP".into(),
+            },
             controller: controller.to_string(),
-            public_key: Some(self.public_key.as_bytes().to_vec()),
+            public_key: Some(match config.use_jose_format {
+                false => KeyFormat::Base58(bs58::encode(self.public_key.as_bytes()).into_string()),
+                true => KeyFormat::JWK(JWK {
+                    key_type: "OKP".into(),
+                    curve: "X25519".into(),
+                    x: Some(base64::encode_config(
+                        self.public_key.as_bytes(),
+                        base64::URL_SAFE_NO_PAD,
+                    )),
+                    y: None,
+                    d: None,
+                }),
+            }),
             private_key: None,
         }]
     }
 
-    fn get_did_document(&self) -> Document {
-        let fingerprint = self.get_fingerprint();
+    fn to_did_document(&self, config: Config) -> Document {
+        let fingerprint = self.fingerprint();
         let controller = format!("did:key:{}", fingerprint.clone());
 
-        let vm = self.to_verification_method(&controller);
+        let vm = self.to_verification_method(config, &controller);
 
         Document {
             context: "https://www.w3.org/ns/did/v1".to_string(),
@@ -73,8 +88,9 @@ impl DIDCore for X25519KeyPair {
             verification_method: vm,
         }
     }
-
-    fn get_fingerprint(&self) -> String {
+}
+impl Fingerprint for X25519KeyPair {
+    fn fingerprint(&self) -> String {
         let codec: &[u8] = &[0xec, 0x1];
         let data = [codec, self.public_key.as_bytes()].concat();
         format!("z{}", bs58::encode(data).into_string())

@@ -1,8 +1,8 @@
 use super::{generate_seed, Ecdsa};
 use crate::{
-    didcore::{DIDCore, Document, VerificationMethod},
+    didcore::{Config, DIDCore, Document, Fingerprint, KeyFormat, VerificationMethod, JWK},
     x25519::X25519KeyPair,
-    AsymmetricKey, DIDKey, DIDKeyTypeInternal, KeyMaterial, Payload,
+    AsymmetricKey, DIDKey, KeyMaterial, Payload,
 };
 use curve25519_dalek::edwards::CompressedEdwardsY;
 use ed25519_dalek::*;
@@ -53,29 +53,57 @@ impl Ed25519KeyPair {
     }
 }
 
-impl DIDCore for Ed25519KeyPair {
-    fn get_fingerprint(&self) -> String {
+impl Fingerprint for Ed25519KeyPair {
+    fn fingerprint(&self) -> String {
         let codec: &[u8] = &[0xed, 0x1];
         let data = [codec, self.public_key.as_bytes()].concat();
         format!("z{}", bs58::encode(data).into_string())
     }
-
-    fn to_verification_method(&self, controller: &str) -> Vec<VerificationMethod> {
+}
+impl DIDCore for Ed25519KeyPair {
+    fn to_verification_method(&self, config: Config, controller: &str) -> Vec<VerificationMethod> {
         vec![VerificationMethod {
-            id: format!("{}#{}", controller, self.get_fingerprint()),
-            key_type: DIDKeyTypeInternal::Ed25519,
+            id: format!("{}#{}", controller, self.fingerprint()),
+            key_type: match config.use_jose_format {
+                false => "Ed25519VerificationKey2018".into(),
+                true => "JsonWebKey2020".into(),
+            },
             controller: controller.to_string(),
-            public_key: Some(self.public_key.as_bytes().to_vec()),
-            private_key: self.secret_key.as_ref().map(|x| x.as_bytes().to_vec()),
+            public_key: Some(match config.use_jose_format {
+                false => KeyFormat::Base58(bs58::encode(self.public_key.as_bytes()).into_string()),
+                true => KeyFormat::JWK(JWK {
+                    key_type: "OKP".into(),
+                    curve: "Ed25519".into(),
+                    x: Some(base64::encode_config(
+                        self.public_key.as_bytes(),
+                        base64::URL_SAFE_NO_PAD,
+                    )),
+                    y: None,
+                    d: None,
+                }),
+            }),
+            private_key: self.secret_key.as_ref().map(|x| match config.use_jose_format {
+                false => KeyFormat::Base58(bs58::encode(self.public_key.as_bytes()).into_string()),
+                true => KeyFormat::JWK(JWK {
+                    key_type: "OKP".into(),
+                    curve: "Ed25519".into(),
+                    x: Some(base64::encode_config(
+                        self.public_key.as_bytes(),
+                        base64::URL_SAFE_NO_PAD,
+                    )),
+                    y: None,
+                    d: Some(base64::encode_config(x.as_bytes(), base64::URL_SAFE_NO_PAD)),
+                }),
+            }),
         }]
     }
 
-    fn get_did_document(&self) -> Document {
-        let fingerprint = self.get_fingerprint();
+    fn to_did_document(&self, config: Config) -> Document {
+        let fingerprint = self.fingerprint();
         let controller = format!("did:key:{}", fingerprint.clone());
 
-        let ed_vm = &self.to_verification_method(&controller)[0];
-        let x_vm = &self.get_x25519().to_verification_method(&controller)[0];
+        let ed_vm = &self.to_verification_method(config, &controller)[0];
+        let x_vm = &self.get_x25519().to_verification_method(config, &controller)[0];
 
         Document {
             context: "https://www.w3.org/ns/did/v1".to_string(),
@@ -155,7 +183,7 @@ impl Ecdsa for Ed25519KeyPair {
 
 #[cfg(test)]
 pub mod test {
-    use crate::{DIDKey, DIDKeyType, Payload};
+    use crate::{didcore::CONFIG_LD_PRIVATE, DIDKey, DIDKeyType, Payload};
 
     use super::*;
     #[test]
@@ -201,7 +229,9 @@ pub mod test {
         let secret_key = "6Lx39RyWn3syuozAe2WiPdAYn1ctMx17t8yrBMGFBmZy";
         let key = Ed25519KeyPair::from_seed(bs58::decode(secret_key).into_vec().unwrap().as_slice());
 
-        let _ = key.get_did_document();
+        let json = key.to_did_document(CONFIG_LD_PRIVATE);
+
+        println!("{}", serde_json::to_string_pretty(&json).unwrap());
 
         assert!(true)
     }

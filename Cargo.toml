@@ -1,12 +1,12 @@
 [package]
 name = "did-key"
-version = "0.0.3"
+version = "0.0.4"
 authors = ["Tomislav Markovski <tomislav@trinsic.id>"]
 edition = "2018"
 license = "Apache-2.0"
 description = "Implementation of the did:key method"
-homepage = "https://github.com/trinsic-id/did-key.rs"
-repository = "https://github.com/trinsic-id/did-key.rs"
+homepage = "https://github.com/decentralized-identity/did-key.rs"
+repository = "https://github.com/decentralized-identity/did-key.rs"
 readme = "README.md"
 
 [lib]

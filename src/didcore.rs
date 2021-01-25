@@ -1,18 +1,27 @@
-use crate::DIDKeyTypeInternal;
 use serde::{ser::SerializeMap, Deserialize, Serialize, Serializer};
 
-pub static mut CONTENT_TYPE: ContentType = ContentType::JsonLd;
-
-pub enum ContentType {
-    JsonLd,
-    Json,
+#[derive(Debug, Clone, Copy)]
+pub struct Config {
+    pub use_jose_format: bool,
+    pub serialize_secrets: bool,
 }
 
-pub trait DIDCore {
-    fn to_verification_method(&self, controller: &str) -> Vec<VerificationMethod>;
-    fn get_did_document(&self) -> Document;
-    fn get_fingerprint(&self) -> String;
-}
+pub const CONFIG_JOSE_PUBLIC: Config = Config {
+    use_jose_format: true,
+    serialize_secrets: false,
+};
+pub const CONFIG_JOSE_PRIVATE: Config = Config {
+    use_jose_format: true,
+    serialize_secrets: false,
+};
+pub const CONFIG_LD_PUBLIC: Config = Config {
+    use_jose_format: true,
+    serialize_secrets: false,
+};
+pub const CONFIG_LD_PRIVATE: Config = Config {
+    use_jose_format: true,
+    serialize_secrets: false,
+};
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -36,10 +45,40 @@ pub struct Document {
 #[derive(Deserialize, Debug, Clone)]
 pub struct VerificationMethod {
     pub id: String,
-    pub(crate) key_type: DIDKeyTypeInternal,
+    pub key_type: String,
     pub controller: String,
-    pub public_key: Option<Vec<u8>>,
-    pub private_key: Option<Vec<u8>>,
+    pub public_key: Option<KeyFormat>,
+    pub private_key: Option<KeyFormat>,
+}
+
+#[derive(Serialize, Debug, Clone, Deserialize)]
+pub enum KeyFormat {
+    Base58(String),
+    Multibase(Vec<u8>),
+    JWK(JWK),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct JWK {
+    #[serde(rename = "kty")]
+    pub key_type: String,
+    #[serde(rename = "crv")]
+    pub curve: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub x: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub y: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub d: Option<String>,
+}
+
+pub trait DIDCore: Fingerprint {
+    fn to_verification_method(&self, config: Config, controller: &str) -> Vec<VerificationMethod>;
+    fn to_did_document(&self, config: Config) -> Document;
+}
+
+pub trait Fingerprint {
+    fn fingerprint(&self) -> String;
 }
 
 impl Serialize for VerificationMethod {
@@ -50,77 +89,45 @@ impl Serialize for VerificationMethod {
         let mut map = serializer.serialize_map(None)?;
 
         map.serialize_entry("id", &self.id)?;
+        map.serialize_entry("type", &self.key_type)?;
         map.serialize_entry("controller", &self.controller)?;
 
-        unsafe {
-            match CONTENT_TYPE {
-                ContentType::JsonLd => {
-                    map.serialize_entry(
-                        "type",
-                        match &self.key_type {
-                            DIDKeyTypeInternal::Ed25519 => "Ed25519VerificationKey2018",
-                            DIDKeyTypeInternal::X25519 => "X25519KeyAgreementKey2019",
-                            DIDKeyTypeInternal::Bls12381G1 => "Bls12381G1Key2020",
-                            DIDKeyTypeInternal::Bls12381G2 => "Bls12381G2Key2020",
-                            _ => todo!(),
-                        },
-                    )?;
-                    match &self.public_key {
-                        Some(key) => {
-                            map.serialize_entry("publicKeyBase58", &bs58::encode(key.as_slice()).into_string())?
-                        }
-                        None => {}
-                    }
-                    match &self.private_key {
-                        Some(key) => {
-                            map.serialize_entry("privateKeyBase58", &bs58::encode(key.as_slice()).into_string())?
-                        }
-                        None => {}
-                    }
-                }
-                ContentType::Json => {
-                    map.serialize_entry("type", "JsonWebKey2020")?;
-
-                    let config = base64::Config::new(base64::CharacterSet::UrlSafe, false);
-                    let jwk = JWK {
-                        key_type: match self.key_type {
-                            DIDKeyTypeInternal::Ed25519 | DIDKeyTypeInternal::X25519 => "OKP",
-                            _ => "EC",
-                        }
-                        .to_string(),
-                        curve: match &self.key_type {
-                            DIDKeyTypeInternal::Ed25519 => "Ed25519",
-                            DIDKeyTypeInternal::X25519 => "X25519",
-                            DIDKeyTypeInternal::P256 => "P-256",
-                            DIDKeyTypeInternal::Bls12381G1 => "BLS12381_G1",
-                            DIDKeyTypeInternal::Bls12381G2 => "BLS12381_G2",
-                            DIDKeyTypeInternal::Secp256k1 => "Secp256k1",
-                        }
-                        .to_string(),
-                        x: self.public_key.as_ref().map(|key| base64::encode_config(key, config)),
-                        d: self.private_key.as_ref().map(|key| base64::encode_config(key, config)),
-                    };
-
-                    match &jwk.d {
-                        Some(_) => map.serialize_entry("privateKeyJwk", &jwk)?,
-                        None => map.serialize_entry("publicKeyJwk", &jwk)?,
-                    }
-                }
-            };
+        match &self.public_key {
+            Some(pk) => match pk {
+                KeyFormat::Base58(pk) => map.serialize_entry("publicKeyBase58", &pk)?,
+                KeyFormat::Multibase(pk) => map.serialize_entry("publicKeyMultibase", &pk)?,
+                KeyFormat::JWK(pk) => map.serialize_entry("publicKeyJwk", &pk)?,
+            },
+            None => {}
+        }
+        match &self.private_key {
+            Some(pk) => match pk {
+                KeyFormat::Base58(pk) => map.serialize_entry("privateKeyBase58", &pk)?,
+                KeyFormat::Multibase(pk) => map.serialize_entry("privateKeyMultibase", &pk)?,
+                KeyFormat::JWK(pk) => map.serialize_entry("privateKeyJwk", &pk)?,
+            },
+            None => {}
         }
 
         map.end()
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub(crate) struct JWK {
-    #[serde(rename = "kty")]
-    key_type: String,
-    #[serde(rename = "crv")]
-    curve: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    x: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    d: Option<String>,
+impl Default for Config {
+    fn default() -> Self {
+        CONFIG_LD_PRIVATE
+    }
+}
+
+#[cfg(test)]
+pub mod tests {
+    use super::KeyFormat;
+
+    #[test]
+    fn test_key_format() {
+        let key = KeyFormat::Base58("key-1".to_string());
+        let serialized = serde_json::to_string_pretty(&key).unwrap();
+
+        println!("{}", serialized)
+    }
 }
