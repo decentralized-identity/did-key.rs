@@ -1,6 +1,9 @@
 use std::convert::TryFrom;
 
-use crate::{generate_seed, AsymmetricKey, DIDCore, DIDKeyTypeInternal, Document, Ecdsa, Payload, VerificationMethod};
+use crate::{
+    didcore::{Config, Fingerprint, KeyFormat, JWK},
+    generate_seed, AsymmetricKey, DIDCore, Document, Ecdsa, Payload, VerificationMethod,
+};
 use bbs::prelude::*;
 use pairing_plus::{
     bls12_381::{Fr, G1, G2},
@@ -92,30 +95,62 @@ impl Ecdsa for Bls12381KeyPair {
 }
 
 impl DIDCore for Bls12381KeyPair {
-    fn to_verification_method(&self, controller: &str) -> Vec<VerificationMethod> {
+    fn to_verification_method(&self, config: Config, controller: &str) -> Vec<VerificationMethod> {
         vec![
             VerificationMethod {
                 id: format!("{}#{}", controller, self.get_fingerprint_g1()),
-                key_type: DIDKeyTypeInternal::Bls12381G1,
+                key_type: match config.use_jose_format {
+                    false => "Bls12381G1Key2020".into(),
+                    true => "JsonWebKey2020".into(),
+                },
                 controller: controller.to_string(),
-                public_key: Some(self.public_key.g1.clone()),
+                public_key: Some(match config.use_jose_format {
+                    false => KeyFormat::Base58(bs58::encode(self.public_key.g1.as_slice()).into_string()),
+                    true => KeyFormat::JWK(JWK {
+                        key_type: "EC".into(),
+                        curve: "BLS12381_G1".into(),
+                        x: Some(base64::encode_config(
+                            self.public_key.g1.as_slice(),
+                            base64::URL_SAFE_NO_PAD,
+                        )),
+                        y: None,
+                        d: None,
+                    }),
+                }),
                 private_key: None,
             },
             VerificationMethod {
                 id: format!("{}#{}", controller, self.get_fingerprint_g2()),
-                key_type: DIDKeyTypeInternal::Bls12381G2,
+                key_type: match config.use_jose_format {
+                    false => "Bls12381G2Key2020".into(),
+                    true => "JsonWebKey2020".into(),
+                },
                 controller: controller.to_string(),
-                public_key: Some(self.public_key.g2.to_bytes_compressed_form().to_vec()),
+                public_key: Some(match config.use_jose_format {
+                    false => {
+                        KeyFormat::Base58(bs58::encode(self.public_key.g2.to_bytes_compressed_form()).into_string())
+                    }
+                    true => KeyFormat::JWK(JWK {
+                        key_type: "EC".into(),
+                        curve: "BLS12381_G2".into(),
+                        x: Some(base64::encode_config(
+                            self.public_key.g2.to_bytes_compressed_form(),
+                            base64::URL_SAFE_NO_PAD,
+                        )),
+                        y: None,
+                        d: None,
+                    }),
+                }),
                 private_key: None,
             },
         ]
     }
 
-    fn get_did_document(&self) -> crate::Document {
-        let fingerprint = self.get_fingerprint();
+    fn to_did_document(&self, config: Config) -> crate::Document {
+        let fingerprint = self.fingerprint();
         let controller = format!("did:key:{}", fingerprint.clone());
 
-        let vm = &self.to_verification_method(&controller);
+        let vm = &self.to_verification_method(config, &controller);
         let vm_ids: Vec<String> = vm.iter().map(|x| x.id.to_string()).collect();
 
         Document {
@@ -129,8 +164,9 @@ impl DIDCore for Bls12381KeyPair {
             verification_method: vm.clone(),
         }
     }
-
-    fn get_fingerprint(&self) -> String {
+}
+impl Fingerprint for Bls12381KeyPair {
+    fn fingerprint(&self) -> String {
         let codec: &[u8] = &[0xee, 0x1];
         let data = [
             codec,
@@ -172,7 +208,7 @@ fn gen_sk(msg: &[u8]) -> Fr {
     use sha2::digest::generic_array::{typenum::U48, GenericArray};
     const SALT: &[u8] = b"BLS-SIG-KEYGEN-SALT-";
     // copy of `msg` with appended zero byte
-    let mut msg_prime = Vec::<u8>::with_capacity(msg.as_ref().len() + 1);
+    let mut msg_prime = Vec::<u8>::with_capacity(msg.len() + 1);
     msg_prime.extend_from_slice(msg.as_ref());
     msg_prime.extend_from_slice(&[0]);
     // `result` has enough length to hold the output from HKDF expansion

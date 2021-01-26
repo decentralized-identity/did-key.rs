@@ -1,5 +1,9 @@
-use crate::{bls12381::Bls12381KeyPair, ed25519::Ed25519KeyPair, p256::P256KeyPair, x25519::X25519KeyPair, secp256k1::Secp256k1KeyPair};
+use crate::{
+    bls12381::Bls12381KeyPair, ed25519::Ed25519KeyPair, p256::P256KeyPair, secp256k1::Secp256k1KeyPair,
+    x25519::X25519KeyPair,
+};
 use did_url::DID;
+use didcore::Config;
 use serde::{Deserialize, Serialize};
 use std::{
     convert::{TryFrom, TryInto},
@@ -14,6 +18,11 @@ pub enum DIDKey {
     Secp256k1(Secp256k1KeyPair),
 }
 
+pub struct AsymmetricKey<P, S> {
+    public_key: P,
+    secret_key: Option<S>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum DIDKeyType {
     Ed25519,
@@ -23,36 +32,9 @@ pub enum DIDKeyType {
     Secp256k1,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub(crate) enum DIDKeyTypeInternal {
-    Ed25519,
-    X25519,
-    P256,
-    Bls12381G1,
-    Bls12381G2,
-    Secp256k1,
-}
-
 pub enum Payload {
     Buffer(Vec<u8>),
     BufferArray(Vec<Vec<u8>>),
-}
-
-impl From<&[u8]> for Payload {
-    fn from(data: &[u8]) -> Self {
-        Payload::Buffer(data.to_vec())
-    }
-}
-
-impl From<Vec<u8>> for Payload {
-    fn from(data: Vec<u8>) -> Self {
-        Payload::Buffer(data)
-    }
-}
-
-pub struct AsymmetricKey<P, S> {
-    public_key: P,
-    secret_key: Option<S>,
 }
 
 pub trait KeyMaterial {
@@ -106,13 +88,13 @@ impl DIDKey {
         format!("z{}", bs58::encode(data).into_string())
     }
 
-    pub fn to_did_document(&self) -> Document {
+    pub fn to_did_document(&self, config: Config) -> Document {
         match self {
-            DIDKey::Ed25519(x) => x.get_did_document(),
-            DIDKey::X25519(x) => x.get_did_document(),
-            DIDKey::P256(_) => todo!(),
-            DIDKey::Bls12381G1G2(x) => x.get_did_document(),
-            DIDKey::Secp256k1(_) => todo!(),
+            DIDKey::Ed25519(x) => x.to_did_document(config),
+            DIDKey::X25519(x) => x.to_did_document(config),
+            DIDKey::P256(x) => x.to_did_document(config),
+            DIDKey::Bls12381G1G2(x) => x.to_did_document(config),
+            DIDKey::Secp256k1(x) => x.to_did_document(config),
         }
     }
 
@@ -184,16 +166,6 @@ impl DIDKey {
             DIDKey::Secp256k1(x) => x.public_key.serialize().to_vec(),
         }
     }
-
-    pub fn secret_key(&self) -> Option<Vec<u8>> {
-        match self {
-            DIDKey::Ed25519(key) => (&key.secret_key).as_ref().map_or(None, |x| Some(x.to_bytes().to_vec())),
-            DIDKey::X25519(key) => (&key.secret_key).as_ref().map_or(None, |x| Some(x.to_bytes().to_vec())),
-            DIDKey::P256(key) => (&key.secret_key).as_ref().map_or(None, |x| Some(x.to_bytes().to_vec())),
-            DIDKey::Bls12381G1G2(_) => todo!(),
-            DIDKey::Secp256k1(key) => (&key.secret_key).as_ref().map_or(None, |x| Some(x.serialize().to_vec())),
-        }
-    }
 }
 
 impl TryFrom<&str> for DIDKey {
@@ -230,17 +202,31 @@ impl TryFrom<&str> for DIDKey {
     }
 }
 
+impl From<&[u8]> for Payload {
+    fn from(data: &[u8]) -> Self {
+        Payload::Buffer(data.to_vec())
+    }
+}
+
+impl From<Vec<u8>> for Payload {
+    fn from(data: Vec<u8>) -> Self {
+        Payload::Buffer(data)
+    }
+}
+
 pub mod bls12381;
 mod didcore;
 pub mod ed25519;
 pub mod p256;
-pub mod x25519;
 pub mod secp256k1;
-pub use didcore::{ContentType, DIDCore, Document, VerificationMethod, CONTENT_TYPE};
+pub mod x25519;
+pub use didcore::{
+    DIDCore, Document, VerificationMethod, CONFIG_JOSE_PRIVATE, CONFIG_JOSE_PUBLIC, CONFIG_LD_PRIVATE, CONFIG_LD_PUBLIC,
+};
 
 #[cfg(test)]
 pub mod test {
-    use crate::{didcore::ContentType, DIDKey, Payload};
+    use crate::{DIDKey, Payload};
 
     use super::*;
     #[test]
@@ -265,12 +251,8 @@ pub mod test {
 
     #[test]
     fn test_did_doc_ld() {
-        unsafe {
-            didcore::CONTENT_TYPE = ContentType::JsonLd;
-        }
-
         let key = DIDKey::new(DIDKeyType::Ed25519);
-        let did_doc = key.to_did_document();
+        let did_doc = key.to_did_document(Config::default());
 
         let json = serde_json::to_string_pretty(&did_doc).unwrap();
 
@@ -281,12 +263,8 @@ pub mod test {
 
     #[test]
     fn test_did_doc_json() {
-        unsafe {
-            didcore::CONTENT_TYPE = ContentType::Json;
-        }
-
         let key = DIDKey::new(DIDKeyType::X25519);
-        let did_doc = key.to_did_document();
+        let did_doc = key.to_did_document(CONFIG_JOSE_PUBLIC);
 
         let json = serde_json::to_string_pretty(&did_doc).unwrap();
 
@@ -297,12 +275,8 @@ pub mod test {
 
     #[test]
     fn test_did_doc_json_bls() {
-        unsafe {
-            didcore::CONTENT_TYPE = ContentType::Json;
-        }
-
         let key = DIDKey::new(DIDKeyType::Bls12381G1G2);
-        let did_doc = key.to_did_document();
+        let did_doc = key.to_did_document(CONFIG_JOSE_PUBLIC);
 
         let json = serde_json::to_string_pretty(&did_doc).unwrap();
 

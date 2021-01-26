@@ -1,5 +1,8 @@
 use super::{generate_seed, Ecdsa};
-use crate::{AsymmetricKey, Payload};
+use crate::{
+    didcore::{Config, Fingerprint, KeyFormat, JWK},
+    AsymmetricKey, DIDCore, Document, Payload, VerificationMethod,
+};
 use p256::{
     ecdsa::{signature::Signer, signature::Verifier, Signature, SigningKey, VerifyKey},
     EncodedPoint,
@@ -75,8 +78,65 @@ impl Ecdsa for P256KeyPair {
     }
 }
 
+impl DIDCore for P256KeyPair {
+    fn to_verification_method(&self, config: Config, controller: &str) -> Vec<VerificationMethod> {
+        vec![VerificationMethod {
+            id: format!("{}#{}", controller, self.fingerprint()),
+            key_type: match config.use_jose_format {
+                false => "UnsupportedVerificationMethod2020".into(),
+                true => "JsonWebKey2020".into(),
+            },
+            controller: controller.to_string(),
+            public_key: Some(match config.use_jose_format {
+                false => {
+                    KeyFormat::Base58(bs58::encode(self.public_key.to_encoded_point(false).as_bytes()).into_string())
+                }
+                true => KeyFormat::JWK(JWK {
+                    key_type: "EC".into(),
+                    curve: "P-256".into(),
+                    x: Some(base64::encode_config(
+                        self.public_key.to_encoded_point(false).as_bytes(),
+                        base64::URL_SAFE_NO_PAD,
+                    )),
+                    y: None,
+                    d: None,
+                }),
+            }),
+            private_key: None,
+        }]
+    }
+
+    fn to_did_document(&self, config: Config) -> crate::Document {
+        let fingerprint = self.fingerprint();
+        let controller = format!("did:key:{}", fingerprint.clone());
+
+        let vm = self.to_verification_method(config, &controller);
+
+        Document {
+            context: "https://www.w3.org/ns/did/v1".to_string(),
+            id: controller.to_string(),
+            key_agreement: Some(vm.iter().map(|x| x.id.to_string()).collect()),
+            authentication: Some(vec![vm[0].id.clone()]),
+            assertion_method: Some(vec![vm[0].id.clone()]),
+            capability_delegation: Some(vec![vm[0].id.clone()]),
+            capability_invocation: Some(vec![vm[0].id.clone()]),
+            verification_method: vm,
+        }
+    }
+}
+
+impl Fingerprint for P256KeyPair {
+    fn fingerprint(&self) -> String {
+        let codec: &[u8] = &[0x12, 0x0, 0x1];
+        let data = [codec, self.public_key.to_encoded_point(false).as_ref()].concat();
+        format!("z{}", bs58::encode(data).into_string())
+    }
+}
+
 #[cfg(test)]
 pub mod test {
+    use crate::{DIDKey, DIDKeyType};
+
     use super::*;
     #[test]
     fn test_demo() {
@@ -88,5 +148,17 @@ pub mod test {
         let is_valud = key.verify(Payload::Buffer(message), signature.as_slice());
 
         assert!(is_valud.map_or(false, |_| true));
+    }
+
+    #[test]
+    fn did_document() {
+        let key = DIDKey::new(DIDKeyType::P256);
+
+        let did_doc = key.to_did_document(Config {
+            use_jose_format: false,
+            serialize_secrets: true,
+        });
+
+        println!("{}", serde_json::to_string_pretty(&did_doc).unwrap())
     }
 }
