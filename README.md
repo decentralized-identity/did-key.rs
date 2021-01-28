@@ -5,6 +5,10 @@
 This crate is intended to provide basic support for `did:key` methods. It has no external dependencies and can be compiled for any target.
 It was originally designed for use with [DIDComm Extension for gRPC](https://github.com/trinsic-id/didcomm-extension-grpc), but we recognized it may be useful if this was an independent library.
 
+# History and Governance
+
+Originally [donated](https://medium.com/decentralized-identity/trinsic-donates-did-key-rs-to-i-d-wg-8a278f37bcd0) to DIF by [Trinsic](trinsic.id). Ongoing management and governance done through the [Identifier and Discovery WG](https://github.com/decentralized-identity/identifiers-discovery).
+
 ## Supported Key Types
 
 - Ed25519
