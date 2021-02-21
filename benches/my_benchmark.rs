@@ -1,25 +1,25 @@
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Bencher, Criterion};
 use did_key::*;
 use std::fmt::Debug;
 
 fn criterion_benchmark(c: &mut Criterion) {
-    c.bench_function("edwards new", |b| b.iter(|| DIDKey::new(DIDKeyType::Ed25519)));
+    c.bench_function("edwards new", |b| b.iter(|| generate::<Ed25519KeyPair>()));
 
-    c.bench_function("montgomery new", |b| b.iter(|| DIDKey::new(DIDKeyType::X25519)));
+    c.bench_function("montgomery new", |b| b.iter(|| generate::<X25519KeyPair>()));
 
-    c.bench_function("p256 new", |b| b.iter(|| DIDKey::new(DIDKeyType::P256)));
+    c.bench_function("p256 new", |b| b.iter(|| generate::<P256KeyPair>()));
 
-    c.bench_function("bls new", |b| b.iter(|| DIDKey::new(DIDKeyType::Bls12381G1G2)));
+    c.bench_function("bls new", |b| b.iter(|| generate::<Bls12381KeyPair>()));
 
     // key exchange using montgomery
-    let a1 = DIDKey::new(DIDKeyType::X25519);
-    let b1 = DIDKey::new(DIDKeyType::X25519);
+    let a1 = generate::<X25519KeyPair>();
+    let b1 = generate::<X25519KeyPair>();
 
     c.bench_function("montgomery exchange", |b| b.iter(|| a1.key_exchange(&b1)));
 
     // key exchange using Secp256k1
-    let a2 = DIDKey::new(DIDKeyType::Secp256k1);
-    let b2 = DIDKey::new(DIDKeyType::Secp256k1);
+    let a2 = generate::<Secp256k1KeyPair>();
+    let b2 = generate::<Secp256k1KeyPair>();
 
     c.bench_function("secp256k1 exchange", |b| b.iter(|| a2.key_exchange(&b2)));
 
@@ -35,9 +35,9 @@ fn criterion_benchmark(c: &mut Criterion) {
         },
     ];
 
-    let ed_key = DIDKey::new(DIDKeyType::Ed25519);
-    let bls_key = DIDKey::new(DIDKeyType::Bls12381G1G2);
-    let p256_key = DIDKey::new(DIDKeyType::P256);
+    let ed_key = generate::<Ed25519KeyPair>();
+    let bls_key = generate::<Bls12381KeyPair>();
+    let p256_key = generate::<P256KeyPair>();
 
     c.bench_function_over_inputs(
         "ed sign",

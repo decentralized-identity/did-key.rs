@@ -1,4 +1,9 @@
-use crate::{didcore::*, ed25519::Ed25519KeyPair, AsymmetricKey};
+use crate::{
+    didcore::*,
+    ed25519::Ed25519KeyPair,
+    traits::{DIDCore, Ecdsa, Fingerprint, KeyMaterial},
+    AsymmetricKey, Error,
+};
 
 use super::{generate_seed, Ecdh};
 use std::convert::TryInto;
@@ -6,8 +11,8 @@ use x25519_dalek::{PublicKey, StaticSecret};
 
 pub type X25519KeyPair = AsymmetricKey<PublicKey, StaticSecret>;
 
-impl X25519KeyPair {
-    pub fn from_seed(seed: &[u8]) -> Self {
+impl KeyMaterial for X25519KeyPair {
+    fn new_with_seed(seed: &[u8]) -> Self {
         let secret_seed = generate_seed(&seed.to_vec()).expect("invalid seed");
 
         let sk = StaticSecret::from(secret_seed);
@@ -19,7 +24,7 @@ impl X25519KeyPair {
         }
     }
 
-    pub fn from_public_key(public_key: &[u8]) -> Self {
+    fn from_public_key(public_key: &[u8]) -> Self {
         let mut pk: [u8; 32] = [0; 32];
         pk.clone_from_slice(public_key);
 
@@ -27,6 +32,22 @@ impl X25519KeyPair {
             public_key: PublicKey::from(pk),
             secret_key: None,
         }
+    }
+
+    fn new() -> Self {
+        Self::new_with_seed(vec![].as_slice())
+    }
+
+    fn from_secret_key(_: &[u8]) -> Self {
+        todo!()
+    }
+
+    fn public_key_bytes(&self) -> Vec<u8> {
+        self.public_key.to_bytes().to_vec()
+    }
+
+    fn private_key_bytes(&self) -> &[u8] {
+        todo!()
     }
 }
 
@@ -39,6 +60,16 @@ impl Ecdh for X25519KeyPair {
     }
 }
 
+impl Ecdsa for X25519KeyPair {
+    fn sign(&self, _: crate::Payload) -> Vec<u8> {
+        unimplemented!("ECDSA is not supported for this key type")
+    }
+
+    fn verify(&self, _: crate::Payload, _: &[u8]) -> Result<(), Error> {
+        unimplemented!("ECDSA is not supported for this key type")
+    }
+}
+
 impl From<Ed25519KeyPair> for X25519KeyPair {
     fn from(key: Ed25519KeyPair) -> Self {
         key.get_x25519()
@@ -46,7 +77,7 @@ impl From<Ed25519KeyPair> for X25519KeyPair {
 }
 
 impl DIDCore for X25519KeyPair {
-    fn to_verification_method(&self, config: Config, controller: &str) -> Vec<VerificationMethod> {
+    fn get_verification_methods(&self, config: Config, controller: &str) -> Vec<VerificationMethod> {
         vec![VerificationMethod {
             id: format!("{}#{}", controller, self.fingerprint()),
             key_type: match config.use_jose_format {
@@ -71,11 +102,11 @@ impl DIDCore for X25519KeyPair {
         }]
     }
 
-    fn to_did_document(&self, config: Config) -> Document {
+    fn get_did_document(&self, config: Config) -> Document {
         let fingerprint = self.fingerprint();
         let controller = format!("did:key:{}", fingerprint.clone());
 
-        let vm = self.to_verification_method(config, &controller);
+        let vm = self.get_verification_methods(config, &controller);
 
         Document {
             context: "https://www.w3.org/ns/did/v1".to_string(),
@@ -102,8 +133,8 @@ pub mod test {
     use super::*;
     #[test]
     fn test_demo() {
-        let alice = X25519KeyPair::from_seed(vec![].as_slice());
-        let bob = X25519KeyPair::from_seed(vec![].as_slice());
+        let alice = X25519KeyPair::new_with_seed(vec![].as_slice());
+        let bob = X25519KeyPair::new_with_seed(vec![].as_slice());
 
         let ex1 = alice.key_exchange(&bob);
         let ex2 = bob.key_exchange(&alice);

@@ -72,15 +72,6 @@ pub struct JWK {
     pub d: Option<String>,
 }
 
-pub trait DIDCore: Fingerprint {
-    fn to_verification_method(&self, config: Config, controller: &str) -> Vec<VerificationMethod>;
-    fn to_did_document(&self, config: Config) -> Document;
-}
-
-pub trait Fingerprint {
-    fn fingerprint(&self) -> String;
-}
-
 impl Serialize for VerificationMethod {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where

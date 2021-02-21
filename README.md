@@ -22,7 +22,7 @@ Originally [donated](https://medium.com/decentralized-identity/trinsic-donates-d
 [Install from crates.io](https://crates.io/crates/did-key)
 
 ```rust
-did-key = "0.0.3"
+did-key = "0.0.4"
 ```
 
 To resolve a did formatted URI:
@@ -30,14 +30,14 @@ To resolve a did formatted URI:
 ```rust
 use did_key::*;
 
-let key = DIDKey::resolve("did:key:z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL").unwrap();
+let key = resolve("did:key:z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL").unwrap();
 
 ```
 
 Generate new key:
 
 ```rust
-let key = DIDKey::new(DIDKeyType::Ed25519);
+let key = generate::<Ed25519KeyPair>());
 
 println!("{}", key.fingerprint());
 ```
@@ -45,7 +45,7 @@ println!("{}", key.fingerprint());
 Sign and verify:
 
 ```rust
-let key = DIDKey::new(DIDKeyType::P256);
+let key = generate::<P256KeyPair>());
 let message = b"message to be signed";
 
 let signature = key.sign(Payload::Buffer(message.to_vec()));
@@ -57,8 +57,8 @@ assert!(valid);
 Create DID Document
 
 ```rust
-let key = DIDKey::new(DIDKeyType::Ed25519);
-let did_doc = key.to_did_document(Config::default());
+let key = generate::<Ed25519KeyPair>());
+let did_doc = key.get_did_document(Config::default());
 
 let doc_json = serde_json::to_string_pretty(&did_doc).unwrap();
 ```
@@ -67,14 +67,14 @@ The default json format for key data is JSON-LD. To serialize a document using J
 parameter or use one of the static configurations ex. `CONFIG_JOSE_PUBLIC`.
 
 ```rust
-let did_doc = key.to_did_document(Config {
+let did_doc = key.get_did_document(Config {
   use_jose_format: true,    // toggle to switch between LD and JOSE key format
   serialize_secrets: false  // toggle to serialize private keys
 });
 
 // or use predefined configs
 
-let did_doc = key.to_did_document(CONFIG_JOSE_PUBLIC);
+let did_doc = key.get_did_document(CONFIG_JOSE_PUBLIC);
 ```
 
 Example JSON-LD output

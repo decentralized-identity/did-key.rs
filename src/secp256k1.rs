@@ -1,4 +1,8 @@
-use crate::{didcore::*, AsymmetricKey, Payload};
+use crate::{
+    didcore::*,
+    traits::{DIDCore, Fingerprint, KeyMaterial},
+    AsymmetricKey, Error, Payload,
+};
 
 use super::{generate_seed, Ecdh, Ecdsa};
 use secp256k1::{Message, PublicKey, SecretKey, SharedSecret, Signature};
@@ -6,8 +10,8 @@ use sha2::{Digest, Sha256};
 
 pub type Secp256k1KeyPair = AsymmetricKey<PublicKey, SecretKey>;
 
-impl Secp256k1KeyPair {
-    pub fn from_seed(seed: &[u8]) -> Self {
+impl KeyMaterial for Secp256k1KeyPair {
+    fn new_with_seed(seed: &[u8]) -> Self {
         let secret_seed = generate_seed(&seed.to_vec()).expect("invalid seed");
         let sk = SecretKey::parse(&secret_seed).expect("Couldn't create key");
         let pk = PublicKey::from_secret_key(&sk);
@@ -18,7 +22,7 @@ impl Secp256k1KeyPair {
         }
     }
 
-    pub fn from_public_key(pk: &[u8]) -> Self {
+    fn from_public_key(pk: &[u8]) -> Self {
         let pk = PublicKey::parse_slice(pk, None).expect("Could not parse public key");
 
         Secp256k1KeyPair {
@@ -26,11 +30,25 @@ impl Secp256k1KeyPair {
             public_key: pk,
         }
     }
+
+    fn new() -> Self {
+        Self::new_with_seed(vec![].as_slice())
+    }
+
+    fn from_secret_key(_: &[u8]) -> Self {
+        todo!()
+    }
+
+    fn public_key_bytes(&self) -> Vec<u8> {
+        self.public_key.serialize().to_vec()
+    }
+
+    fn private_key_bytes(&self) -> &[u8] {
+        todo!()
+    }
 }
 
 impl Ecdsa for Secp256k1KeyPair {
-    type Err = String;
-
     fn sign(&self, payload: Payload) -> Vec<u8> {
         match payload {
             Payload::Buffer(payload) => {
@@ -48,7 +66,7 @@ impl Ecdsa for Secp256k1KeyPair {
         }
     }
 
-    fn verify(&self, payload: Payload, signature: &[u8]) -> Result<(), Self::Err> {
+    fn verify(&self, payload: Payload, signature: &[u8]) -> Result<(), Error> {
         let verified;
         match payload {
             Payload::Buffer(payload) => {
@@ -63,7 +81,7 @@ impl Ecdsa for Secp256k1KeyPair {
         if verified {
             return Ok(());
         } else {
-            return Err(String::from("verify failed"));
+            return Err(Error::Unknown("verify failed"));
         }
     }
 }
@@ -81,7 +99,7 @@ impl Ecdh for Secp256k1KeyPair {
 }
 
 impl DIDCore for Secp256k1KeyPair {
-    fn to_verification_method(&self, config: Config, controller: &str) -> Vec<VerificationMethod> {
+    fn get_verification_methods(&self, config: Config, controller: &str) -> Vec<VerificationMethod> {
         let pk: [u8; 65] = self.public_key.serialize();
 
         vec![VerificationMethod {
@@ -105,11 +123,11 @@ impl DIDCore for Secp256k1KeyPair {
         }]
     }
 
-    fn to_did_document(&self, config: Config) -> crate::Document {
+    fn get_did_document(&self, config: Config) -> crate::Document {
         let fingerprint = self.fingerprint();
         let controller = format!("did:key:{}", fingerprint.clone());
 
-        let vm = self.to_verification_method(config, &controller);
+        let vm = self.get_verification_methods(config, &controller);
 
         Document {
             context: "https://www.w3.org/ns/did/v1".to_string(),
@@ -140,14 +158,14 @@ fn get_hash(payload: &Vec<u8>) -> [u8; 32] {
 
 #[cfg(test)]
 pub mod test {
-    use crate::{DIDKey, DIDKeyType};
+    use crate::generate;
 
     use super::*;
 
     //Are these tests sufficient? Or do I need more?
     #[test]
     fn generate_key() {
-        let key_pair = Secp256k1KeyPair::from_seed(vec![].as_slice());
+        let key_pair = Secp256k1KeyPair::new_with_seed(vec![].as_slice());
         assert_eq!(key_pair.public_key.serialize().len(), 65);
     }
 
@@ -155,7 +173,7 @@ pub mod test {
     fn sign_and_verify() {
         let message = b"super secret message".to_vec();
         let payload = Payload::Buffer(message.clone());
-        let key_pair = Secp256k1KeyPair::from_seed(vec![].as_slice());
+        let key_pair = Secp256k1KeyPair::new_with_seed(vec![].as_slice());
 
         let signature = key_pair.sign(payload);
         let payload = Payload::Buffer(message.clone());
@@ -170,17 +188,17 @@ pub mod test {
 
     #[test]
     fn key_exchange() {
-        let key_pair1 = Secp256k1KeyPair::from_seed(vec![].as_slice());
-        let key_pair2 = Secp256k1KeyPair::from_seed(vec![].as_slice());
+        let key_pair1 = Secp256k1KeyPair::new_with_seed(vec![].as_slice());
+        let key_pair2 = Secp256k1KeyPair::new_with_seed(vec![].as_slice());
 
         assert_eq!(key_pair1.key_exchange(&key_pair2), key_pair2.key_exchange(&key_pair1));
     }
 
     #[test]
     fn did_document() {
-        let key = DIDKey::new(DIDKeyType::Secp256k1);
+        let key = generate::<Secp256k1KeyPair>();
 
-        let did_doc = key.to_did_document(Config {
+        let did_doc = key.get_did_document(Config {
             use_jose_format: true,
             serialize_secrets: true,
         });

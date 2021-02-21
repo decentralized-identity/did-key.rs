@@ -1,14 +1,21 @@
 use super::{generate_seed, Ecdsa};
 use crate::{
-    didcore::{Config, DIDCore, Document, Fingerprint, KeyFormat, VerificationMethod, JWK},
+    didcore::{Config, Document, KeyFormat, VerificationMethod, JWK},
+    traits::{DIDCore, Ecdh, Fingerprint},
     x25519::X25519KeyPair,
-    AsymmetricKey, DIDKey, KeyMaterial, Payload,
+    AsymmetricKey, Error, KeyMaterial, Payload,
 };
 use curve25519_dalek::edwards::CompressedEdwardsY;
 use ed25519_dalek::*;
 use std::convert::{TryFrom, TryInto};
 
 pub type Ed25519KeyPair = AsymmetricKey<PublicKey, SecretKey>;
+
+impl std::fmt::Debug for Ed25519KeyPair {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{:?}", self.public_key))
+    }
+}
 
 impl Ed25519KeyPair {
     pub fn from_seed(seed: &[u8]) -> Self {
@@ -40,7 +47,7 @@ impl Ed25519KeyPair {
                 output[31] &= 127;
                 output[31] |= 64;
 
-                X25519KeyPair::from_seed(&output)
+                X25519KeyPair::new_with_seed(&output)
             }
             None => {
                 let var_name: [u8; 32] = self.public_key.as_bytes().to_vec().as_slice().try_into().unwrap();
@@ -60,8 +67,9 @@ impl Fingerprint for Ed25519KeyPair {
         format!("z{}", bs58::encode(data).into_string())
     }
 }
+
 impl DIDCore for Ed25519KeyPair {
-    fn to_verification_method(&self, config: Config, controller: &str) -> Vec<VerificationMethod> {
+    fn get_verification_methods(&self, config: Config, controller: &str) -> Vec<VerificationMethod> {
         vec![VerificationMethod {
             id: format!("{}#{}", controller, self.fingerprint()),
             key_type: match config.use_jose_format {
@@ -98,12 +106,12 @@ impl DIDCore for Ed25519KeyPair {
         }]
     }
 
-    fn to_did_document(&self, config: Config) -> Document {
+    fn get_did_document(&self, config: Config) -> Document {
         let fingerprint = self.fingerprint();
         let controller = format!("did:key:{}", fingerprint.clone());
 
-        let ed_vm = &self.to_verification_method(config, &controller)[0];
-        let x_vm = &self.get_x25519().to_verification_method(config, &controller)[0];
+        let ed_vm = &self.get_verification_methods(config, &controller)[0];
+        let x_vm = &self.get_x25519().get_verification_methods(config, &controller)[0];
 
         Document {
             context: "https://www.w3.org/ns/did/v1".to_string(),
@@ -119,43 +127,49 @@ impl DIDCore for Ed25519KeyPair {
 }
 
 impl KeyMaterial for Ed25519KeyPair {
-    fn new() -> crate::DIDKey {
-        Self::new_from_seed(vec![].as_slice())
+    fn new() -> Ed25519KeyPair {
+        Self::new_with_seed(vec![].as_slice())
     }
 
-    fn new_from_seed(seed: &[u8]) -> crate::DIDKey {
+    fn new_with_seed(seed: &[u8]) -> Ed25519KeyPair {
         let secret_seed = generate_seed(&seed.to_vec()).expect("invalid seed");
 
         let sk: SecretKey = SecretKey::from_bytes(&secret_seed).expect("cannot generate secret key");
         let pk: PublicKey = (&sk).try_into().expect("cannot generate public key");
 
-        DIDKey::Ed25519(Ed25519KeyPair {
+        Ed25519KeyPair {
             secret_key: Some(sk),
             public_key: pk,
-        })
+        }
     }
 
-    fn from_public_key(public_key: &[u8]) -> crate::DIDKey {
-        DIDKey::Ed25519(Ed25519KeyPair {
+    fn from_public_key(public_key: &[u8]) -> Ed25519KeyPair {
+        Ed25519KeyPair {
             public_key: PublicKey::from_bytes(public_key).expect("invalid byte data"),
             secret_key: None,
-        })
+        }
     }
 
-    fn from_secret_key(secret_key: &[u8]) -> crate::DIDKey {
+    fn from_secret_key(secret_key: &[u8]) -> Ed25519KeyPair {
         let sk: SecretKey = SecretKey::from_bytes(&secret_key).expect("cannot generate secret key");
         let pk: PublicKey = (&sk).try_into().expect("cannot generate public key");
 
-        DIDKey::Ed25519(Ed25519KeyPair {
+        Ed25519KeyPair {
             secret_key: Some(sk),
             public_key: pk,
-        })
+        }
+    }
+
+    fn public_key_bytes(&self) -> Vec<u8> {
+        self.public_key.as_bytes().to_vec()
+    }
+
+    fn private_key_bytes(&self) -> &[u8] {
+        todo!()
     }
 }
 
 impl Ecdsa for Ed25519KeyPair {
-    type Err = String;
-
     fn sign(&self, payload: Payload) -> Vec<u8> {
         let esk: ExpandedSecretKey = match &self.secret_key {
             Some(x) => x,
@@ -169,21 +183,27 @@ impl Ecdsa for Ed25519KeyPair {
         }
     }
 
-    fn verify(&self, payload: Payload, signature: &[u8]) -> Result<(), Self::Err> {
+    fn verify(&self, payload: Payload, signature: &[u8]) -> Result<(), Error> {
         let sig = Signature::try_from(signature).expect("invalid signature data");
         match payload {
             Payload::Buffer(payload) => match self.public_key.verify(payload.as_slice(), &sig) {
                 Ok(_) => Ok(()),
-                _ => Err(String::from("verify failed")),
+                _ => Err(Error::Unknown("verify failed")),
             },
             _ => unimplemented!("payload type not supported for this key"),
         }
     }
 }
 
+impl Ecdh for Ed25519KeyPair {
+    fn key_exchange(&self, _: &Self) -> Vec<u8> {
+        unimplemented!("ECDH is not supported for this key type")
+    }
+}
+
 #[cfg(test)]
 pub mod test {
-    use crate::{didcore::CONFIG_LD_PRIVATE, DIDKey, DIDKeyType, Payload};
+    use crate::{didcore::CONFIG_LD_PRIVATE, generate_with_seed, Payload};
 
     use super::*;
     #[test]
@@ -207,21 +227,15 @@ pub mod test {
         let secret_key = "6Lx39RyWn3syuozAe2WiPdAYn1ctMx17t8yrBMGFBmZy";
         let public_key = "6fioC1zcDPyPEL19pXRS2E4iJ46zH7xP6uSgAaPdwDrx";
 
-        let sk = DIDKey::new_from_seed(
-            DIDKeyType::Ed25519,
-            bs58::decode(secret_key).into_vec().unwrap().as_slice(),
-        );
+        let sk = generate_with_seed::<Ed25519KeyPair>(bs58::decode(secret_key).into_vec().unwrap().as_slice());
         let message = b"super secret message";
 
         let signature = sk.sign(Payload::Buffer(message.to_vec()));
 
-        let pk = DIDKey::from_public_key(
-            DIDKeyType::Ed25519,
-            bs58::decode(public_key).into_vec().unwrap().as_slice(),
-        );
-        let is_valud = pk.verify(Payload::Buffer(message.to_vec()), &signature);
+        let pk = Ed25519KeyPair::from_public_key(bs58::decode(public_key).into_vec().unwrap().as_slice());
+        let is_valud = pk.verify(Payload::Buffer(message.to_vec()), &signature).unwrap();
 
-        assert!(is_valud);
+        matches!(is_valud, ());
     }
 
     #[test]
@@ -229,7 +243,7 @@ pub mod test {
         let secret_key = "6Lx39RyWn3syuozAe2WiPdAYn1ctMx17t8yrBMGFBmZy";
         let key = Ed25519KeyPair::from_seed(bs58::decode(secret_key).into_vec().unwrap().as_slice());
 
-        let json = key.to_did_document(CONFIG_LD_PRIVATE);
+        let json = key.get_did_document(CONFIG_LD_PRIVATE);
 
         println!("{}", serde_json::to_string_pretty(&json).unwrap());
 

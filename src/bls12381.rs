@@ -1,10 +1,15 @@
 use std::convert::TryFrom;
 
 use crate::{
-    didcore::{Config, Fingerprint, KeyFormat, JWK},
-    generate_seed, AsymmetricKey, DIDCore, Document, Ecdsa, Payload, VerificationMethod,
+    didcore::{Config, KeyFormat, JWK},
+    generate_seed, AsymmetricKey, Document, KeyMaterial, Payload, VerificationMethod,
+};
+use crate::{
+    traits::{DIDCore, Ecdh, Ecdsa, Fingerprint},
+    Error,
 };
 use bbs::prelude::*;
+
 use pairing_plus::{
     bls12_381::{Fr, G1, G2},
     hash_to_field::BaseFromRO,
@@ -21,20 +26,6 @@ pub struct CyclicGroup {
 }
 
 impl Bls12381KeyPair {
-    pub fn from_seed(seed: &[u8]) -> Self {
-        generate_keypair(Some(seed.to_vec()))
-    }
-
-    pub fn from_public_key(public_key: &[u8]) -> Self {
-        Bls12381KeyPair {
-            secret_key: None,
-            public_key: CyclicGroup {
-                g1: public_key[..48].to_vec(),
-                g2: DeterministicPublicKey::try_from(public_key[48..].to_vec()).unwrap(),
-            },
-        }
-    }
-
     fn get_fingerprint_g1(&self) -> String {
         let codec: &[u8] = &[0xea, 0x1];
         let data = [codec, self.public_key.g1.as_slice()].concat().to_vec();
@@ -51,8 +42,6 @@ impl Bls12381KeyPair {
 }
 
 impl Ecdsa for Bls12381KeyPair {
-    type Err = String;
-
     fn sign(&self, payload: Payload) -> Vec<u8> {
         let messages: Vec<SignatureMessage> = match payload {
             Payload::Buffer(_) => unimplemented!("payload type not supported"),
@@ -69,7 +58,7 @@ impl Ecdsa for Bls12381KeyPair {
         .to_vec()
     }
 
-    fn verify(&self, payload: Payload, signature: &[u8]) -> Result<(), Self::Err> {
+    fn verify(&self, payload: Payload, signature: &[u8]) -> Result<(), Error> {
         let messages: Vec<SignatureMessage> = match payload {
             Payload::Buffer(_) => unimplemented!("payload type not supported"),
             Payload::BufferArray(m) => m.iter().map(|x| SignatureMessage::hash(x)).collect(),
@@ -78,7 +67,7 @@ impl Ecdsa for Bls12381KeyPair {
         let pk = self.public_key.g2.to_public_key(messages.len()).unwrap();
         let sig = match Signature::try_from(signature) {
             Ok(sig) => sig,
-            Err(err) => return Err(format!("unable to parse signature: {}", err)),
+            Err(_) => return Err(Error::Unknown("unable to parse signature")),
         };
 
         match sig.verify(&messages, &pk) {
@@ -86,16 +75,53 @@ impl Ecdsa for Bls12381KeyPair {
                 if x {
                     Ok(())
                 } else {
-                    Err("invalid signature".to_string())
+                    Err(Error::Unknown("invalid signature"))
                 }
             }
-            Err(err) => Err(format!("unexpected error: {}", err)),
+            Err(_) => Err(Error::Unknown("unexpected error")),
         }
     }
 }
 
+impl KeyMaterial for Bls12381KeyPair {
+    fn new() -> Bls12381KeyPair {
+        generate_keypair(None)
+    }
+
+    fn new_with_seed(seed: &[u8]) -> Bls12381KeyPair {
+        generate_keypair(Some(seed.into()))
+    }
+
+    fn from_public_key(public_key: &[u8]) -> Bls12381KeyPair {
+        Bls12381KeyPair {
+            secret_key: None,
+            public_key: CyclicGroup {
+                g1: public_key[..48].to_vec(),
+                g2: DeterministicPublicKey::try_from(public_key[48..].to_vec()).unwrap(),
+            },
+        }
+    }
+
+    fn from_secret_key(_: &[u8]) -> Bls12381KeyPair {
+        todo!()
+    }
+
+    fn public_key_bytes(&self) -> Vec<u8> {
+        [
+            self.public_key.g1.as_slice(),
+            self.public_key.g2.to_bytes_compressed_form().as_ref(),
+        ]
+        .concat()
+        .to_vec()
+    }
+
+    fn private_key_bytes(&self) -> &[u8] {
+        todo!()
+    }
+}
+
 impl DIDCore for Bls12381KeyPair {
-    fn to_verification_method(&self, config: Config, controller: &str) -> Vec<VerificationMethod> {
+    fn get_verification_methods(&self, config: Config, controller: &str) -> Vec<VerificationMethod> {
         vec![
             VerificationMethod {
                 id: format!("{}#{}", controller, self.get_fingerprint_g1()),
@@ -146,11 +172,11 @@ impl DIDCore for Bls12381KeyPair {
         ]
     }
 
-    fn to_did_document(&self, config: Config) -> crate::Document {
+    fn get_did_document(&self, config: Config) -> crate::Document {
         let fingerprint = self.fingerprint();
         let controller = format!("did:key:{}", fingerprint.clone());
 
-        let vm = &self.to_verification_method(config, &controller);
+        let vm = &self.get_verification_methods(config, &controller);
         let vm_ids: Vec<String> = vm.iter().map(|x| x.id.to_string()).collect();
 
         Document {
@@ -165,6 +191,7 @@ impl DIDCore for Bls12381KeyPair {
         }
     }
 }
+
 impl Fingerprint for Bls12381KeyPair {
     fn fingerprint(&self) -> String {
         let codec: &[u8] = &[0xee, 0x1];
@@ -176,6 +203,12 @@ impl Fingerprint for Bls12381KeyPair {
         .concat()
         .to_vec();
         format!("z{}", bs58::encode(data).into_string())
+    }
+}
+
+impl Ecdh for Bls12381KeyPair {
+    fn key_exchange(&self, _: &Self) -> Vec<u8> {
+        unimplemented!("ECDH is not supported for this key type")
     }
 }
 
@@ -222,7 +255,6 @@ fn gen_sk(msg: &[u8]) -> Fr {
 #[cfg(test)]
 pub mod test {
     use super::*;
-    use crate::{DIDKey, DIDKeyType};
 
     #[test]
     fn test_signature() {
@@ -276,23 +308,19 @@ pub mod test {
 
     #[test]
     fn test_generate_public_key() {
-        let key = Bls12381KeyPair::from_seed(vec![].as_slice());
-
-        let didkey = DIDKey::Bls12381G1G2(key);
-        let pk = didkey.public_key();
+        let key = Bls12381KeyPair::new_with_seed(vec![].as_slice());
+        let pk = key.public_key_bytes();
 
         assert_eq!(G1_COMPRESSED_SIZE + G2_COMPRESSED_SIZE, pk.len());
     }
 
     #[test]
     fn test_generate_public_key_from_bytes() {
-        let key = Bls12381KeyPair::from_seed(vec![].as_slice());
+        let key = Bls12381KeyPair::new_with_seed(vec![].as_slice());
+        let pk = key.public_key_bytes();
 
-        let didkey = DIDKey::Bls12381G1G2(key);
-        let pk = didkey.public_key();
-
-        let actual = DIDKey::from_public_key(DIDKeyType::Bls12381G1G2, &pk);
-        let pk1 = actual.public_key();
+        let actual = Bls12381KeyPair::from_public_key(&pk);
+        let pk1 = actual.public_key_bytes();
 
         assert_eq!(pk, pk1);
     }

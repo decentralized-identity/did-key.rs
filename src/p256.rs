@@ -1,7 +1,8 @@
 use super::{generate_seed, Ecdsa};
 use crate::{
-    didcore::{Config, Fingerprint, KeyFormat, JWK},
-    AsymmetricKey, DIDCore, Document, Payload, VerificationMethod,
+    didcore::{Config, KeyFormat, JWK},
+    traits::{DIDCore, Ecdh, Fingerprint, KeyMaterial},
+    AsymmetricKey, Document, Error, Payload, VerificationMethod,
 };
 use p256::{
     ecdsa::{signature::Signer, signature::Verifier, Signature, SigningKey, VerifyKey},
@@ -17,8 +18,8 @@ impl std::fmt::Debug for P256KeyPair {
     }
 }
 
-impl P256KeyPair {
-    pub fn from_seed(seed: &[u8]) -> Self {
+impl KeyMaterial for P256KeyPair {
+    fn new_with_seed(seed: &[u8]) -> Self {
         let secret_seed = generate_seed(&seed.to_vec()).expect("invalid seed");
 
         let sk = SigningKey::new(&secret_seed).expect("Couldn't create key");
@@ -30,7 +31,7 @@ impl P256KeyPair {
         }
     }
 
-    pub fn from_public_key(public_key: &[u8]) -> Self {
+    fn from_public_key(public_key: &[u8]) -> Self {
         let pk: Vec<u8> = match public_key.len() == 65 {
             true => public_key.to_vec(),
             false => {
@@ -45,11 +46,25 @@ impl P256KeyPair {
                 .expect("invalid point"),
         }
     }
+
+    fn new() -> Self {
+        Self::new_with_seed(vec![].as_slice())
+    }
+
+    fn from_secret_key(_: &[u8]) -> Self {
+        todo!()
+    }
+
+    fn public_key_bytes(&self) -> Vec<u8> {
+        todo!()
+    }
+
+    fn private_key_bytes(&self) -> &[u8] {
+        todo!()
+    }
 }
 
 impl Ecdsa for P256KeyPair {
-    type Err = String;
-
     fn sign(&self, payload: Payload) -> Vec<u8> {
         match payload {
             Payload::Buffer(payload) => {
@@ -63,7 +78,7 @@ impl Ecdsa for P256KeyPair {
         }
     }
 
-    fn verify(&self, payload: Payload, signature: &[u8]) -> Result<(), Self::Err> {
+    fn verify(&self, payload: Payload, signature: &[u8]) -> Result<(), Error> {
         match payload {
             Payload::Buffer(payload) => match self
                 .public_key
@@ -71,7 +86,7 @@ impl Ecdsa for P256KeyPair {
                 .is_ok()
             {
                 true => Ok(()),
-                false => Err("invalid signature".to_string()),
+                false => Err(Error::Unknown("invalid signature")),
             },
             _ => unimplemented!("payload type not supported for this key"),
         }
@@ -79,7 +94,7 @@ impl Ecdsa for P256KeyPair {
 }
 
 impl DIDCore for P256KeyPair {
-    fn to_verification_method(&self, config: Config, controller: &str) -> Vec<VerificationMethod> {
+    fn get_verification_methods(&self, config: Config, controller: &str) -> Vec<VerificationMethod> {
         vec![VerificationMethod {
             id: format!("{}#{}", controller, self.fingerprint()),
             key_type: match config.use_jose_format {
@@ -106,11 +121,11 @@ impl DIDCore for P256KeyPair {
         }]
     }
 
-    fn to_did_document(&self, config: Config) -> crate::Document {
+    fn get_did_document(&self, config: Config) -> crate::Document {
         let fingerprint = self.fingerprint();
         let controller = format!("did:key:{}", fingerprint.clone());
 
-        let vm = self.to_verification_method(config, &controller);
+        let vm = self.get_verification_methods(config, &controller);
 
         Document {
             context: "https://www.w3.org/ns/did/v1".to_string(),
@@ -133,14 +148,20 @@ impl Fingerprint for P256KeyPair {
     }
 }
 
+impl Ecdh for P256KeyPair {
+    fn key_exchange(&self, _: &Self) -> Vec<u8> {
+        unimplemented!("ECDH not supported for this key type")
+    }
+}
+
 #[cfg(test)]
 pub mod test {
-    use crate::{DIDKey, DIDKeyType};
+    use crate::generate;
 
     use super::*;
     #[test]
     fn test_demo() {
-        let key = P256KeyPair::from_seed(vec![].as_slice());
+        let key = P256KeyPair::new_with_seed(vec![].as_slice());
         let message = b"super secret message".to_vec();
 
         let signature = key.sign(Payload::Buffer(message.clone()));
@@ -152,9 +173,9 @@ pub mod test {
 
     #[test]
     fn did_document() {
-        let key = DIDKey::new(DIDKeyType::P256);
+        let key = generate::<P256KeyPair>();
 
-        let did_doc = key.to_did_document(Config {
+        let did_doc = key.get_did_document(Config {
             use_jose_format: false,
             serialize_secrets: true,
         });
