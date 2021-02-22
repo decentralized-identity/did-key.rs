@@ -163,7 +163,7 @@ impl DIDCore for Secp256k1KeyPair {
 impl Fingerprint for Secp256k1KeyPair {
     fn fingerprint(&self) -> String {
         let codec: &[u8] = &[0xe7, 0x1];
-        let data = [codec, self.public_key.serialize().as_ref()].concat();
+        let data = [codec, self.public_key.serialize_compressed().as_ref()].concat();
         format!("z{}", bs58::encode(data).into_string())
     }
 }
@@ -191,7 +191,7 @@ pub mod test {
     #[test]
     fn generate_key() {
         let key_pair = Secp256k1KeyPair::new_with_seed(vec![].as_slice());
-        assert_eq!(key_pair.public_key.serialize().len(), 65);
+        assert_eq!(key_pair.public_key.serialize_compressed().len(), 33);
     }
 
     #[test]
