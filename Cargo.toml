@@ -1,6 +1,6 @@
 [package]
 name = "did-key"
-version = "0.0.7"
+version = "0.0.8"
 authors = ["Tomislav Markovski <tomislav@trinsic.id>"]
 edition = "2018"
 license = "Apache-2.0"
