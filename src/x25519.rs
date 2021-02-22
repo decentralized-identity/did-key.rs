@@ -1,17 +1,17 @@
 use crate::{
     didcore::*,
     ed25519::Ed25519KeyPair,
-    traits::{DIDCore, Ecdsa, Fingerprint, KeyMaterial},
+    traits::{DIDCore, Ecdsa, Fingerprint, Generate, KeyMaterial},
     AsymmetricKey, Error, KeyPair,
 };
 
 use super::{generate_seed, Ecdh};
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryInto;
 use x25519_dalek::{PublicKey, StaticSecret};
 
 pub type X25519KeyPair = AsymmetricKey<PublicKey, StaticSecret>;
 
-impl KeyMaterial for X25519KeyPair {
+impl Generate for X25519KeyPair {
     fn new_with_seed(seed: &[u8]) -> Self {
         let secret_seed = generate_seed(&seed.to_vec()).expect("invalid seed");
 
@@ -49,7 +49,9 @@ impl KeyMaterial for X25519KeyPair {
             secret_key: Some(sk),
         }
     }
+}
 
+impl KeyMaterial for X25519KeyPair {
     fn public_key_bytes(&self) -> Vec<u8> {
         self.public_key.to_bytes().to_vec()
     }

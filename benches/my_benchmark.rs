@@ -1,27 +1,32 @@
-use criterion::{criterion_group, criterion_main, Bencher, Criterion};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use did_key::*;
 use std::fmt::Debug;
 
 fn criterion_benchmark(c: &mut Criterion) {
-    c.bench_function("edwards new", |b| b.iter(|| generate::<Ed25519KeyPair>()));
+    let mut group_key = c.benchmark_group("key generation");
 
-    c.bench_function("montgomery new", |b| b.iter(|| generate::<X25519KeyPair>()));
+    group_key.bench_function("edwards new", |b| b.iter(|| generate::<Ed25519KeyPair>(None)));
+    group_key.bench_function("montgomery new", |b| b.iter(|| generate::<X25519KeyPair>(None)));
+    group_key.bench_function("p256 new", |b| b.iter(|| generate::<P256KeyPair>(None)));
+    group_key.bench_function("bls new", |b| b.iter(|| generate::<Bls12381KeyPair>(None)));
 
-    c.bench_function("p256 new", |b| b.iter(|| generate::<P256KeyPair>()));
+    group_key.finish();
 
-    c.bench_function("bls new", |b| b.iter(|| generate::<Bls12381KeyPair>()));
+    let mut group_exch = c.benchmark_group("key exchange");
 
     // key exchange using montgomery
     let a1 = X25519KeyPair::new();
     let b1 = X25519KeyPair::new();
 
-    c.bench_function("montgomery exchange", |b| b.iter(|| a1.key_exchange(&b1)));
+    group_exch.bench_function("montgomery exchange", |b| b.iter(|| a1.key_exchange(&b1)));
 
     // key exchange using Secp256k1
     let a2 = Secp256k1KeyPair::new();
     let b2 = Secp256k1KeyPair::new();
 
-    c.bench_function("secp256k1 exchange", |b| b.iter(|| a2.key_exchange(&b2)));
+    group_exch.bench_function("secp256k1 exchange", |b| b.iter(|| a2.key_exchange(&b2)));
+
+    group_exch.finish();
 
     // signature benchmarks
     let payloads: Vec<Buffer> = vec![
@@ -35,36 +40,36 @@ fn criterion_benchmark(c: &mut Criterion) {
         },
     ];
 
-    let ed_key = generate::<Ed25519KeyPair>();
-    let bls_key = generate::<Bls12381KeyPair>();
-    let p256_key = generate::<P256KeyPair>();
+    let ed_key = generate::<Ed25519KeyPair>(None);
+    let bls_key = generate::<Bls12381KeyPair>(None);
+    let p256_key = generate::<P256KeyPair>(None);
 
-    c.bench_function_over_inputs(
-        "ed sign",
-        move |b: &mut Bencher, payload: &Buffer| {
-            b.iter(|| ed_key.sign(Payload::Buffer(payload.data.to_vec())));
-        },
-        payloads.clone(),
-    );
+    let mut group_sign = c.benchmark_group("signatures");
 
-    c.bench_function_over_inputs(
-        "p256 sign",
-        move |b: &mut Bencher, payload: &Buffer| {
-            b.iter(|| p256_key.sign(Payload::Buffer(payload.data.to_vec())));
-        },
-        payloads.clone(),
-    );
+    for payload in payloads {
+        group_sign.bench_with_input(
+            BenchmarkId::new("ed sign", payload.data.len()),
+            &payload,
+            |b, &payload| b.iter(|| ed_key.sign(Payload::Buffer(payload.data.to_vec()))),
+        );
 
-    c.bench_function_over_inputs(
-        "bls sign",
-        move |b: &mut Bencher, payload: &Buffer| {
-            b.iter(|| bls_key.sign(Payload::BufferArray(vec![payload.data.to_vec()])));
-        },
-        payloads,
-    );
+        group_sign.bench_with_input(
+            BenchmarkId::new("p256 sign", payload.data.len()),
+            &payload,
+            |b, &payload| b.iter(|| p256_key.sign(Payload::Buffer(payload.data.to_vec()))),
+        );
+
+        group_sign.bench_with_input(
+            BenchmarkId::new("bls sign", payload.data.len()),
+            &payload,
+            |b, &payload| b.iter(|| bls_key.sign(Payload::BufferArray(vec![payload.data.to_vec()]))),
+        );
+    }
+
+    group_sign.finish();
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 struct Buffer<'a> {
     data: &'a [u8],
 }

@@ -2,6 +2,7 @@
 
 use base64::URL_SAFE;
 use did_url::DID;
+use traits::Generate;
 
 use std::{
     convert::{TryFrom, TryInto},
@@ -28,23 +29,26 @@ pub enum Payload {
 }
 
 #[derive(Debug)]
-pub enum Error<'a> {
+pub enum Error {
     SignatureError,
     ResolutionFailed,
     InvalidKey,
-    Unknown(&'a str),
+    Unknown(String),
 }
 
-pub trait DIDKey = KeyMaterial + Ecdsa + Ecdh + DIDCore + Fingerprint + Into<KeyPair>;
+pub trait DIDKey = Generate + Ecdsa + Ecdh + DIDCore + Fingerprint + Into<KeyPair>;
 
+/// Generate new `did:key` of the specified type
 pub fn generate<T: DIDKey>(seed: Option<&[u8]>) -> KeyPair {
     T::new_with_seed(seed.map_or(vec![].as_slice(), |x| x)).into()
 }
 
-pub fn resolve(did_uri: &str) -> Result<KeyPair, String> {
+/// Resolve a `did:key` from a URI
+pub fn resolve(did_uri: &str) -> Result<KeyPair, Error> {
     KeyPair::try_from(did_uri)
 }
 
+/// Generate key pair from existing key material
 pub fn from_existing_key<T: DIDKey>(public_key: &[u8], private_key: Option<&[u8]>) -> KeyPair {
     if private_key.is_some() {
         T::from_secret_key(private_key.unwrap()).into()
@@ -107,6 +111,28 @@ impl DIDCore for KeyPair {
     }
 }
 
+impl KeyMaterial for KeyPair {
+    fn public_key_bytes(&self) -> Vec<u8> {
+        match self {
+            KeyPair::Ed25519(x) => x.public_key_bytes(),
+            KeyPair::X25519(x) => x.public_key_bytes(),
+            KeyPair::P256(x) => x.public_key_bytes(),
+            KeyPair::Bls12381G1G2(x) => x.public_key_bytes(),
+            KeyPair::Secp256k1(x) => x.public_key_bytes(),
+        }
+    }
+
+    fn private_key_bytes(&self) -> Vec<u8> {
+        match self {
+            KeyPair::Ed25519(x) => x.private_key_bytes(),
+            KeyPair::X25519(x) => x.private_key_bytes(),
+            KeyPair::P256(x) => x.private_key_bytes(),
+            KeyPair::Bls12381G1G2(x) => x.private_key_bytes(),
+            KeyPair::Secp256k1(x) => x.private_key_bytes(),
+        }
+    }
+}
+
 impl Fingerprint for KeyPair {
     fn fingerprint(&self) -> String {
         match self {
@@ -133,14 +159,14 @@ pub(crate) fn generate_seed(initial_seed: &[u8]) -> Result<[u8; 32], &str> {
 }
 
 impl TryFrom<&str> for KeyPair {
-    type Error = String;
+    type Error = Error;
 
     fn try_from(did_uri: &str) -> Result<Self, Self::Error> {
         // let re = Regex::new(r"did:key:[\w]*#[\w]*\??[\w]*").unwrap();
 
         let url = match DID::from_str(did_uri) {
             Ok(url) => url,
-            Err(_) => return Err("couldn't parse DID URI".to_string()),
+            Err(_) => return Err(Error::Unknown("couldn't parse DID URI".into())),
         };
 
         let pub_key = match url
@@ -150,9 +176,9 @@ impl TryFrom<&str> for KeyPair {
         {
             Some(url) => match bs58::decode(url).into_vec() {
                 Ok(url) => url,
-                Err(_) => return Err("invalid base58 encoded data in DID URI".to_string()),
+                Err(_) => return Err(Error::Unknown("invalid base58 encoded data in DID URI".into())),
             },
-            None => return Err("invalid URI data".to_string()),
+            None => return Err(Error::Unknown("invalid URI data".into())),
         };
 
         return Ok(match pub_key[0..2] {
@@ -199,7 +225,23 @@ impl From<&KeyFormat> for KeyPair {
                         .into()
                     }
                 }
-                "X25519" => todo!(),
+                "X25519" => {
+                    if jwk.d.is_some() {
+                        X25519KeyPair::from_secret_key(
+                            base64::decode_config(jwk.d.as_ref().unwrap(), URL_SAFE)
+                                .unwrap()
+                                .as_slice(),
+                        )
+                        .into()
+                    } else {
+                        X25519KeyPair::from_public_key(
+                            base64::decode_config(jwk.x.as_ref().unwrap(), URL_SAFE)
+                                .unwrap()
+                                .as_slice(),
+                        )
+                        .into()
+                    }
+                }
                 _ => unimplemented!("method not supported"),
             },
         }
@@ -332,5 +374,21 @@ pub mod test {
         let key = resolve("did:key:z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL").unwrap();
 
         assert!(matches!(key, KeyPair::Ed25519(_)));
+    }
+
+    #[test]
+    fn serialize_to_verification_method_and_back() {
+        let expected = generate::<Ed25519KeyPair>(None);
+        let vm = expected.get_verification_methods(super::CONFIG_JOSE_PRIVATE, "");
+
+        let actual: KeyPair = vm.first().unwrap().into();
+
+        assert!(matches!(actual, KeyPair::Ed25519(_)));
+        assert_eq!(actual.fingerprint(), expected.fingerprint());
+
+        assert_eq!(
+            expected.get_did_document(Config::default()),
+            actual.get_did_document(Config::default())
+        );
     }
 }

@@ -23,7 +23,7 @@ pub const CONFIG_LD_PRIVATE: Config = Config {
     serialize_secrets: false,
 };
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Document {
     #[serde(rename = "@context")]
@@ -42,7 +42,7 @@ pub struct Document {
     pub verification_method: Vec<VerificationMethod>,
 }
 
-#[derive(Deserialize, Debug, Clone, Default)]
+#[derive(Deserialize, Debug, Clone, PartialEq, Default)]
 pub struct VerificationMethod {
     pub id: String,
     pub key_type: String,
@@ -51,14 +51,14 @@ pub struct VerificationMethod {
     pub private_key: Option<KeyFormat>,
 }
 
-#[derive(Serialize, Debug, Clone, Deserialize)]
+#[derive(Serialize, Debug, Clone, PartialEq, Deserialize)]
 pub enum KeyFormat {
     Base58(String),
     Multibase(Vec<u8>),
     JWK(JWK),
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Default)]
 pub struct JWK {
     #[serde(rename = "kid", skip_serializing_if = "Option::is_none")]
     pub key_id: Option<String>,

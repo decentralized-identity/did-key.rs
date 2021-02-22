@@ -1,7 +1,7 @@
 use super::{generate_seed, Ecdsa};
 use crate::{
     didcore::{Config, KeyFormat, JWK},
-    traits::{DIDCore, Ecdh, Fingerprint, KeyMaterial},
+    traits::{DIDCore, Ecdh, Fingerprint, Generate, KeyMaterial},
     AsymmetricKey, Document, Error, KeyPair, Payload, VerificationMethod,
 };
 use p256::{
@@ -18,7 +18,7 @@ impl std::fmt::Debug for P256KeyPair {
     }
 }
 
-impl KeyMaterial for P256KeyPair {
+impl Generate for P256KeyPair {
     fn new_with_seed(seed: &[u8]) -> Self {
         let secret_seed = generate_seed(&seed.to_vec()).expect("invalid seed");
 
@@ -60,7 +60,9 @@ impl KeyMaterial for P256KeyPair {
             secret_key: Some(sk),
         }
     }
+}
 
+impl KeyMaterial for P256KeyPair {
     fn public_key_bytes(&self) -> Vec<u8> {
         self.public_key.to_encoded_point(false).as_bytes().to_vec()
     }
@@ -94,7 +96,7 @@ impl Ecdsa for P256KeyPair {
                 .is_ok()
             {
                 true => Ok(()),
-                false => Err(Error::Unknown("invalid signature")),
+                false => Err(Error::Unknown("invalid signature".into())),
             },
             _ => unimplemented!("payload type not supported for this key"),
         }

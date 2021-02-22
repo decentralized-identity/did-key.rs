@@ -1,7 +1,7 @@
 use super::{generate_seed, Ecdsa};
 use crate::{
     didcore::{Config, Document, KeyFormat, VerificationMethod, JWK},
-    traits::{DIDCore, Ecdh, Fingerprint},
+    traits::{DIDCore, Ecdh, Fingerprint, Generate},
     x25519::X25519KeyPair,
     AsymmetricKey, Error, KeyMaterial, KeyPair, Payload,
 };
@@ -119,7 +119,7 @@ impl DIDCore for Ed25519KeyPair {
     }
 }
 
-impl KeyMaterial for Ed25519KeyPair {
+impl Generate for Ed25519KeyPair {
     fn new() -> Ed25519KeyPair {
         Self::new_with_seed(vec![].as_slice())
     }
@@ -152,7 +152,8 @@ impl KeyMaterial for Ed25519KeyPair {
             public_key: pk,
         }
     }
-
+}
+impl KeyMaterial for Ed25519KeyPair {
     fn public_key_bytes(&self) -> Vec<u8> {
         self.public_key.as_bytes().to_vec()
     }
@@ -181,7 +182,7 @@ impl Ecdsa for Ed25519KeyPair {
         match payload {
             Payload::Buffer(payload) => match self.public_key.verify(payload.as_slice(), &sig) {
                 Ok(_) => Ok(()),
-                _ => Err(Error::Unknown("verify failed")),
+                _ => Err(Error::Unknown("verify failed".into())),
             },
             _ => unimplemented!("payload type not supported for this key"),
         }

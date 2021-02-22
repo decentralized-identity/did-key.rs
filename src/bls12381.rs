@@ -1,8 +1,10 @@
-use std::{convert::TryFrom, todo};
+use std::convert::TryFrom;
 
 use crate::{
     didcore::{Config, KeyFormat, JWK},
-    generate_seed, AsymmetricKey, Document, KeyMaterial, KeyPair, Payload, VerificationMethod,
+    generate_seed,
+    traits::Generate,
+    AsymmetricKey, Document, KeyMaterial, KeyPair, Payload, VerificationMethod,
 };
 use crate::{
     traits::{DIDCore, Ecdh, Ecdsa, Fingerprint},
@@ -67,7 +69,7 @@ impl Ecdsa for Bls12381KeyPair {
         let pk = self.public_key.g2.to_public_key(messages.len()).unwrap();
         let sig = match Signature::try_from(signature) {
             Ok(sig) => sig,
-            Err(_) => return Err(Error::Unknown("unable to parse signature")),
+            Err(_) => return Err(Error::Unknown("unable to parse signature".into())),
         };
 
         match sig.verify(&messages, &pk) {
@@ -75,15 +77,15 @@ impl Ecdsa for Bls12381KeyPair {
                 if x {
                     Ok(())
                 } else {
-                    Err(Error::Unknown("invalid signature"))
+                    Err(Error::Unknown("invalid signature".into()))
                 }
             }
-            Err(_) => Err(Error::Unknown("unexpected error")),
+            Err(_) => Err(Error::Unknown("unexpected error".into())),
         }
     }
 }
 
-impl KeyMaterial for Bls12381KeyPair {
+impl Generate for Bls12381KeyPair {
     fn new() -> Bls12381KeyPair {
         generate_keypair(None)
     }
@@ -128,7 +130,8 @@ impl KeyMaterial for Bls12381KeyPair {
             secret_key: Some(SecretKey::from(sk)),
         }
     }
-
+}
+impl KeyMaterial for Bls12381KeyPair {
     fn public_key_bytes(&self) -> Vec<u8> {
         [
             self.public_key.g1.as_slice(),

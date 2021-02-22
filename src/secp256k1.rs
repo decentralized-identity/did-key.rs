@@ -1,6 +1,6 @@
 use crate::{
     didcore::*,
-    traits::{DIDCore, Fingerprint, KeyMaterial},
+    traits::{DIDCore, Fingerprint, Generate, KeyMaterial},
     AsymmetricKey, Error, KeyPair, Payload,
 };
 
@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 
 pub type Secp256k1KeyPair = AsymmetricKey<PublicKey, SecretKey>;
 
-impl KeyMaterial for Secp256k1KeyPair {
+impl Generate for Secp256k1KeyPair {
     fn new_with_seed(seed: &[u8]) -> Self {
         let secret_seed = generate_seed(&seed.to_vec()).expect("invalid seed");
         let sk = SecretKey::parse(&secret_seed).expect("Couldn't create key");
@@ -44,7 +44,9 @@ impl KeyMaterial for Secp256k1KeyPair {
             secret_key: Some(sk),
         }
     }
+}
 
+impl KeyMaterial for Secp256k1KeyPair {
     fn public_key_bytes(&self) -> Vec<u8> {
         self.public_key.serialize().to_vec()
     }
@@ -87,7 +89,7 @@ impl Ecdsa for Secp256k1KeyPair {
         if verified {
             return Ok(());
         } else {
-            return Err(Error::Unknown("verify failed"));
+            return Err(Error::Unknown("verify failed".into()));
         }
     }
 }

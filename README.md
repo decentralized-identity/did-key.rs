@@ -22,7 +22,7 @@ Originally [donated](https://medium.com/decentralized-identity/trinsic-donates-d
 [Install from crates.io](https://crates.io/crates/did-key)
 
 ```rust
-did-key = "0.0.4"
+did-key = "*"
 ```
 
 To resolve a did formatted URI:
@@ -31,13 +31,14 @@ To resolve a did formatted URI:
 use did_key::*;
 
 let key = resolve("did:key:z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL").unwrap();
+let did_doc = key.get_did_document(Config::default());
 
 ```
 
 Generate new key:
 
 ```rust
-let key = generate::<Ed25519KeyPair>());
+let key = generate::<Ed25519KeyPair>();
 
 println!("{}", key.fingerprint());
 ```
@@ -45,7 +46,7 @@ println!("{}", key.fingerprint());
 Sign and verify:
 
 ```rust
-let key = generate::<P256KeyPair>());
+let key = generate::<P256KeyPair>();
 let message = b"message to be signed";
 
 let signature = key.sign(Payload::Buffer(message.to_vec()));
@@ -57,7 +58,7 @@ assert!(valid);
 Create DID Document
 
 ```rust
-let key = generate::<Ed25519KeyPair>());
+let key = generate::<Ed25519KeyPair>();
 let did_doc = key.get_did_document(Config::default());
 
 let doc_json = serde_json::to_string_pretty(&did_doc).unwrap();

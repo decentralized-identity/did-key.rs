@@ -1,8 +1,16 @@
 use crate::{didcore::Config, Document, Error, Payload, VerificationMethod};
 
+/// Return key material bytes
+pub trait KeyMaterial {
+    /// Returns the public key bytes as slice
+    fn public_key_bytes(&self) -> Vec<u8>;
+    /// Returns the secret key bytes as slice
+    fn private_key_bytes(&self) -> Vec<u8>;
+}
+
 /// Collection of methods to initialize a key pair
 /// using random or deterministic manner
-pub trait KeyMaterial {
+pub trait Generate: KeyMaterial {
     /// Generate random key
     fn new() -> Self;
     /// Generate key deterministically using a given seed
@@ -11,10 +19,6 @@ pub trait KeyMaterial {
     fn from_public_key(public_key: &[u8]) -> Self;
     /// Generate instance from existing secret key
     fn from_secret_key(private_key: &[u8]) -> Self;
-    /// Returns the public key bytes as slice
-    fn public_key_bytes(&self) -> Vec<u8>;
-    /// Returns the secret key bytes as slice
-    fn private_key_bytes(&self) -> Vec<u8>;
 }
 
 /// Used for Elliptic Curve Digital Signature Algorithm
