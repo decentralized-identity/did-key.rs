@@ -2,7 +2,6 @@
 
 use base64::URL_SAFE;
 use did_url::DID;
-use traits::Generate;
 
 use std::{
     convert::{TryFrom, TryInto},
@@ -276,7 +275,7 @@ pub use {
         CONFIG_LD_PUBLIC, JWK,
     },
     ed25519::Ed25519KeyPair,
-    traits::{DIDCore, Ecdh, Ecdsa, Fingerprint, KeyMaterial},
+    traits::{DIDCore, Ecdh, Ecdsa, Fingerprint, KeyMaterial, Generate},
     x25519::X25519KeyPair,
 };
 
@@ -372,7 +371,7 @@ pub mod test {
     #[test]
     fn test_key_resolve() {
         let key = resolve("did:key:z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL").unwrap();
-
+        
         assert!(matches!(key, KeyPair::Ed25519(_)));
     }
 

@@ -38,7 +38,7 @@ let did_doc = key.get_did_document(Config::default());
 Generate new key:
 
 ```rust
-let key = generate::<Ed25519KeyPair>();
+let key = generate::<Ed25519KeyPair>(None);
 
 println!("{}", key.fingerprint());
 ```
@@ -46,7 +46,7 @@ println!("{}", key.fingerprint());
 Sign and verify:
 
 ```rust
-let key = generate::<P256KeyPair>();
+let key = generate::<P256KeyPair>(None);
 let message = b"message to be signed";
 
 let signature = key.sign(Payload::Buffer(message.to_vec()));
@@ -58,7 +58,7 @@ assert!(valid);
 Create DID Document
 
 ```rust
-let key = generate::<Ed25519KeyPair>();
+let key = generate::<Ed25519KeyPair>(None);
 let did_doc = key.get_did_document(Config::default());
 
 let doc_json = serde_json::to_string_pretty(&did_doc).unwrap();
