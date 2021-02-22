@@ -6,7 +6,6 @@ use std::{
     convert::{TryFrom, TryInto},
     str::FromStr,
 };
-use traits::{DIDCore, Ecdh, Ecdsa, Fingerprint, KeyMaterial};
 
 pub enum KeyPair {
     Ed25519(Ed25519KeyPair),
@@ -74,6 +73,16 @@ impl Ecdsa for KeyPair {
             KeyPair::P256(x) => x.verify(payload, signature),
             KeyPair::Bls12381G1G2(x) => x.verify(payload, signature),
             KeyPair::Secp256k1(x) => x.verify(payload, signature),
+        }
+    }
+}
+
+impl Ecdh for KeyPair {
+    fn key_exchange(&self, their_public: &Self) -> Vec<u8> {
+        match (self, their_public) {
+            (KeyPair::X25519(me), KeyPair::X25519(them)) => me.key_exchange(them),
+            (KeyPair::P256(me), KeyPair::P256(them)) => me.key_exchange(them),
+            _ => unimplemented!("ECDH not supported for this key combination"),
         }
     }
 }
@@ -183,9 +192,11 @@ pub use {
     crate::secp256k1::Secp256k1KeyPair,
     bls12381::Bls12381KeyPair,
     didcore::{
-        Document, VerificationMethod, CONFIG_JOSE_PRIVATE, CONFIG_JOSE_PUBLIC, CONFIG_LD_PRIVATE, CONFIG_LD_PUBLIC,
+        Document, KeyFormat, VerificationMethod, CONFIG_JOSE_PRIVATE, CONFIG_JOSE_PUBLIC, CONFIG_LD_PRIVATE,
+        CONFIG_LD_PUBLIC, JWK,
     },
     ed25519::Ed25519KeyPair,
+    traits::{DIDCore, Ecdh, Ecdsa, Fingerprint, KeyMaterial},
     x25519::X25519KeyPair,
 };
 

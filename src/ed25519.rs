@@ -78,29 +78,22 @@ impl DIDCore for Ed25519KeyPair {
             },
             controller: controller.to_string(),
             public_key: Some(match config.use_jose_format {
-                false => KeyFormat::Base58(bs58::encode(self.public_key.as_bytes()).into_string()),
+                false => KeyFormat::Base58(bs58::encode(self.public_key_bytes()).into_string()),
                 true => KeyFormat::JWK(JWK {
                     key_type: "OKP".into(),
                     curve: "Ed25519".into(),
-                    x: Some(base64::encode_config(
-                        self.public_key.as_bytes(),
-                        base64::URL_SAFE_NO_PAD,
-                    )),
-                    y: None,
-                    d: None,
+                    x: Some(base64::encode_config(self.public_key_bytes(), base64::URL_SAFE_NO_PAD)),
+                    ..Default::default()
                 }),
             }),
-            private_key: self.secret_key.as_ref().map(|x| match config.use_jose_format {
-                false => KeyFormat::Base58(bs58::encode(self.public_key.as_bytes()).into_string()),
+            private_key: self.secret_key.as_ref().map(|_| match config.use_jose_format {
+                false => KeyFormat::Base58(bs58::encode(self.public_key_bytes()).into_string()),
                 true => KeyFormat::JWK(JWK {
                     key_type: "OKP".into(),
                     curve: "Ed25519".into(),
-                    x: Some(base64::encode_config(
-                        self.public_key.as_bytes(),
-                        base64::URL_SAFE_NO_PAD,
-                    )),
-                    y: None,
-                    d: Some(base64::encode_config(x.as_bytes(), base64::URL_SAFE_NO_PAD)),
+                    x: Some(base64::encode_config(self.public_key_bytes(), base64::URL_SAFE_NO_PAD)),
+                    d: Some(base64::encode_config(self.private_key_bytes(), base64::URL_SAFE_NO_PAD)),
+                    ..Default::default()
                 }),
             }),
         }]
@@ -164,8 +157,8 @@ impl KeyMaterial for Ed25519KeyPair {
         self.public_key.as_bytes().to_vec()
     }
 
-    fn private_key_bytes(&self) -> &[u8] {
-        todo!()
+    fn private_key_bytes(&self) -> Vec<u8> {
+        self.secret_key.as_ref().map_or(vec![], |x| x.to_bytes().to_vec())
     }
 }
 

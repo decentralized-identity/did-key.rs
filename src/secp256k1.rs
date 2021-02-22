@@ -35,16 +35,22 @@ impl KeyMaterial for Secp256k1KeyPair {
         Self::new_with_seed(vec![].as_slice())
     }
 
-    fn from_secret_key(_: &[u8]) -> Self {
-        todo!()
+    fn from_secret_key(secret_key: &[u8]) -> Self {
+        let sk = SecretKey::parse_slice(secret_key).unwrap();
+        let pk = PublicKey::from_secret_key(&sk);
+
+        Secp256k1KeyPair {
+            public_key: pk,
+            secret_key: Some(sk),
+        }
     }
 
     fn public_key_bytes(&self) -> Vec<u8> {
         self.public_key.serialize().to_vec()
     }
 
-    fn private_key_bytes(&self) -> &[u8] {
-        todo!()
+    fn private_key_bytes(&self) -> Vec<u8> {
+        self.secret_key.as_ref().map_or(vec![], |x| x.serialize().to_vec())
     }
 }
 
@@ -116,10 +122,21 @@ impl DIDCore for Secp256k1KeyPair {
                     curve: "Secp256k1".into(),
                     x: Some(base64::encode_config(&pk[1..33], base64::URL_SAFE_NO_PAD)),
                     y: Some(base64::encode_config(&pk[33..65], base64::URL_SAFE_NO_PAD)),
-                    d: None,
+                    ..Default::default()
                 }),
             }),
-            private_key: None,
+            private_key: self.secret_key.as_ref().map(|_| match config.use_jose_format {
+                false => KeyFormat::Base58(bs58::encode(self.public_key_bytes()).into_string()),
+                true => KeyFormat::JWK(JWK {
+                    key_type: "EC".into(),
+                    curve: "Secp256k1".into(),
+                    x: Some(base64::encode_config(&pk[1..33], base64::URL_SAFE_NO_PAD)),
+                    y: Some(base64::encode_config(&pk[33..65], base64::URL_SAFE_NO_PAD)),
+                    d: Some(base64::encode_config(self.private_key_bytes(), base64::URL_SAFE_NO_PAD)),
+                    ..Default::default()
+                }),
+            }),
+            ..Default::default()
         }]
     }
 

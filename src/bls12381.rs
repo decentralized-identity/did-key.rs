@@ -1,4 +1,4 @@
-use std::convert::TryFrom;
+use std::{convert::TryFrom, todo};
 
 use crate::{
     didcore::{Config, KeyFormat, JWK},
@@ -102,7 +102,7 @@ impl KeyMaterial for Bls12381KeyPair {
         }
     }
 
-    fn from_secret_key(_: &[u8]) -> Bls12381KeyPair {
+    fn from_secret_key(secret_key_bytes: &[u8]) -> Bls12381KeyPair {
         todo!()
     }
 
@@ -115,8 +115,10 @@ impl KeyMaterial for Bls12381KeyPair {
         .to_vec()
     }
 
-    fn private_key_bytes(&self) -> &[u8] {
-        todo!()
+    fn private_key_bytes(&self) -> Vec<u8> {
+        self.secret_key
+            .as_ref()
+            .map_or(vec![], |x| x.to_bytes_compressed_form().to_vec())
     }
 }
 
@@ -139,11 +141,10 @@ impl DIDCore for Bls12381KeyPair {
                             self.public_key.g1.as_slice(),
                             base64::URL_SAFE_NO_PAD,
                         )),
-                        y: None,
-                        d: None,
+                        ..Default::default()
                     }),
                 }),
-                private_key: None,
+                ..Default::default()
             },
             VerificationMethod {
                 id: format!("{}#{}", controller, self.get_fingerprint_g2()),
@@ -163,11 +164,10 @@ impl DIDCore for Bls12381KeyPair {
                             self.public_key.g2.to_bytes_compressed_form(),
                             base64::URL_SAFE_NO_PAD,
                         )),
-                        y: None,
-                        d: None,
+                        ..Default::default()
                     }),
                 }),
-                private_key: None,
+                ..Default::default()
             },
         ]
     }

@@ -14,7 +14,7 @@ pub trait KeyMaterial {
     /// Returns the public key bytes as slice
     fn public_key_bytes(&self) -> Vec<u8>;
     /// Returns the secret key bytes as slice
-    fn private_key_bytes(&self) -> &[u8];
+    fn private_key_bytes(&self) -> Vec<u8>;
 }
 
 /// Used for Elliptic Curve Digital Signature Algorithm

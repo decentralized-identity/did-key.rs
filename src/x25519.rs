@@ -6,7 +6,7 @@ use crate::{
 };
 
 use super::{generate_seed, Ecdh};
-use std::convert::TryInto;
+use std::convert::{TryFrom, TryInto};
 use x25519_dalek::{PublicKey, StaticSecret};
 
 pub type X25519KeyPair = AsymmetricKey<PublicKey, StaticSecret>;
@@ -38,16 +38,24 @@ impl KeyMaterial for X25519KeyPair {
         Self::new_with_seed(vec![].as_slice())
     }
 
-    fn from_secret_key(_: &[u8]) -> Self {
-        todo!()
+    fn from_secret_key(secret_key: &[u8]) -> Self {
+        let sized_data: [u8; 32] = clone_into_array(&secret_key[..32]);
+
+        let sk = StaticSecret::from(sized_data);
+        let pk: PublicKey = (&sk).try_into().expect("invalid public key");
+
+        X25519KeyPair {
+            public_key: pk,
+            secret_key: Some(sk),
+        }
     }
 
     fn public_key_bytes(&self) -> Vec<u8> {
         self.public_key.to_bytes().to_vec()
     }
 
-    fn private_key_bytes(&self) -> &[u8] {
-        todo!()
+    fn private_key_bytes(&self) -> Vec<u8> {
+        self.secret_key.as_ref().unwrap().to_bytes().to_vec()
     }
 }
 
@@ -86,19 +94,25 @@ impl DIDCore for X25519KeyPair {
             },
             controller: controller.to_string(),
             public_key: Some(match config.use_jose_format {
-                false => KeyFormat::Base58(bs58::encode(self.public_key.as_bytes()).into_string()),
+                false => KeyFormat::Base58(bs58::encode(self.public_key_bytes()).into_string()),
                 true => KeyFormat::JWK(JWK {
                     key_type: "OKP".into(),
                     curve: "X25519".into(),
-                    x: Some(base64::encode_config(
-                        self.public_key.as_bytes(),
-                        base64::URL_SAFE_NO_PAD,
-                    )),
-                    y: None,
-                    d: None,
+                    x: Some(base64::encode_config(self.public_key_bytes(), base64::URL_SAFE_NO_PAD)),
+                    ..Default::default()
                 }),
             }),
-            private_key: None,
+            private_key: self.secret_key.as_ref().map(|_| match config.use_jose_format {
+                false => KeyFormat::Base58(bs58::encode(self.public_key_bytes()).into_string()),
+                true => KeyFormat::JWK(JWK {
+                    key_type: "OKP".into(),
+                    curve: "X25519".into(),
+                    x: Some(base64::encode_config(self.public_key_bytes(), base64::URL_SAFE_NO_PAD)),
+                    d: Some(base64::encode_config(self.private_key_bytes(), base64::URL_SAFE_NO_PAD)),
+                    ..Default::default()
+                }),
+            }),
+            ..Default::default()
         }]
     }
 
@@ -132,6 +146,16 @@ impl From<X25519KeyPair> for KeyPair {
     fn from(key_pair: X25519KeyPair) -> Self {
         KeyPair::X25519(key_pair)
     }
+}
+
+fn clone_into_array<A, T>(slice: &[T]) -> A
+where
+    A: Sized + Default + AsMut<[T]>,
+    T: Clone,
+{
+    let mut a = Default::default();
+    <A as AsMut<[T]>>::as_mut(&mut a).clone_from_slice(slice);
+    a
 }
 
 #[cfg(test)]

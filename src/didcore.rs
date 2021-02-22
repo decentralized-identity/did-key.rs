@@ -42,7 +42,7 @@ pub struct Document {
     pub verification_method: Vec<VerificationMethod>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone, Default)]
 pub struct VerificationMethod {
     pub id: String,
     pub key_type: String,
@@ -58,8 +58,10 @@ pub enum KeyFormat {
     JWK(JWK),
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct JWK {
+    #[serde(rename = "kid", skip_serializing_if = "Option::is_none")]
+    pub key_id: Option<String>,
     #[serde(rename = "kty")]
     pub key_type: String,
     #[serde(rename = "crv")]
