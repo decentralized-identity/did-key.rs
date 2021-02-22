@@ -1,5 +1,3 @@
-#![feature(trait_alias)]
-
 use base64::URL_SAFE;
 use did_url::DID;
 
@@ -35,10 +33,10 @@ pub enum Error {
     Unknown(String),
 }
 
-pub trait DIDKey = Generate + Ecdsa + Ecdh + DIDCore + Fingerprint + Into<KeyPair>;
+pub type DIDKey = KeyPair;
 
 /// Generate new `did:key` of the specified type
-pub fn generate<T: DIDKey>(seed: Option<&[u8]>) -> KeyPair {
+pub fn generate<T: Generate + Ecdsa + Ecdh + DIDCore + Fingerprint + Into<KeyPair>>(seed: Option<&[u8]>) -> KeyPair {
     T::new_with_seed(seed.map_or(vec![].as_slice(), |x| x)).into()
 }
 
@@ -48,7 +46,10 @@ pub fn resolve(did_uri: &str) -> Result<KeyPair, Error> {
 }
 
 /// Generate key pair from existing key material
-pub fn from_existing_key<T: DIDKey>(public_key: &[u8], private_key: Option<&[u8]>) -> KeyPair {
+pub fn from_existing_key<T: Generate + Ecdsa + Ecdh + DIDCore + Fingerprint + Into<KeyPair>>(
+    public_key: &[u8],
+    private_key: Option<&[u8]>,
+) -> KeyPair {
     if private_key.is_some() {
         T::from_secret_key(private_key.unwrap()).into()
     } else {
@@ -275,7 +276,7 @@ pub use {
         CONFIG_LD_PUBLIC, JWK,
     },
     ed25519::Ed25519KeyPair,
-    traits::{DIDCore, Ecdh, Ecdsa, Fingerprint, KeyMaterial, Generate},
+    traits::{DIDCore, Ecdh, Ecdsa, Fingerprint, Generate, KeyMaterial},
     x25519::X25519KeyPair,
 };
 
@@ -371,7 +372,7 @@ pub mod test {
     #[test]
     fn test_key_resolve() {
         let key = resolve("did:key:z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL").unwrap();
-        
+
         assert!(matches!(key, KeyPair::Ed25519(_)));
     }
 
