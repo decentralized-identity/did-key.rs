@@ -2,7 +2,9 @@ use std::convert::TryFrom;
 
 use crate::{
     didcore::{Config, KeyFormat, JWK},
-    generate_seed, AsymmetricKey, Document, KeyMaterial, KeyPair, Payload, VerificationMethod,
+    generate_seed,
+    traits::Generate,
+    AsymmetricKey, Document, KeyMaterial, KeyPair, Payload, VerificationMethod,
 };
 use crate::{
     traits::{DIDCore, Ecdh, Ecdsa, Fingerprint},
@@ -67,7 +69,7 @@ impl Ecdsa for Bls12381KeyPair {
         let pk = self.public_key.g2.to_public_key(messages.len()).unwrap();
         let sig = match Signature::try_from(signature) {
             Ok(sig) => sig,
-            Err(_) => return Err(Error::Unknown("unable to parse signature")),
+            Err(_) => return Err(Error::Unknown("unable to parse signature".into())),
         };
 
         match sig.verify(&messages, &pk) {
@@ -75,15 +77,15 @@ impl Ecdsa for Bls12381KeyPair {
                 if x {
                     Ok(())
                 } else {
-                    Err(Error::Unknown("invalid signature"))
+                    Err(Error::Unknown("invalid signature".into()))
                 }
             }
-            Err(_) => Err(Error::Unknown("unexpected error")),
+            Err(_) => Err(Error::Unknown("unexpected error".into())),
         }
     }
 }
 
-impl KeyMaterial for Bls12381KeyPair {
+impl Generate for Bls12381KeyPair {
     fn new() -> Bls12381KeyPair {
         generate_keypair(None)
     }
@@ -102,10 +104,34 @@ impl KeyMaterial for Bls12381KeyPair {
         }
     }
 
-    fn from_secret_key(_: &[u8]) -> Bls12381KeyPair {
-        todo!()
-    }
+    fn from_secret_key(secret_key_bytes: &[u8]) -> Bls12381KeyPair {
+        use sha2::digest::generic_array::{typenum::U48, GenericArray};
 
+        let result: &GenericArray<u8, U48> = GenericArray::<u8, U48>::from_slice(secret_key_bytes);
+        let sk = Fr::from_okm(&result);
+
+        let mut pk1 = G1::one();
+        pk1.mul_assign(sk);
+
+        let mut pk1_bytes = Vec::new();
+        pk1.serialize(&mut pk1_bytes, true).unwrap();
+
+        let mut pk2 = G2::one();
+        pk2.mul_assign(sk);
+
+        let mut pk2_bytes = Vec::new();
+        pk2.serialize(&mut pk2_bytes, true).unwrap();
+
+        Bls12381KeyPair {
+            public_key: CyclicGroup {
+                g1: pk1_bytes.to_vec(),
+                g2: DeterministicPublicKey::try_from(pk2_bytes).unwrap(),
+            },
+            secret_key: Some(SecretKey::from(sk)),
+        }
+    }
+}
+impl KeyMaterial for Bls12381KeyPair {
     fn public_key_bytes(&self) -> Vec<u8> {
         [
             self.public_key.g1.as_slice(),
@@ -115,8 +141,10 @@ impl KeyMaterial for Bls12381KeyPair {
         .to_vec()
     }
 
-    fn private_key_bytes(&self) -> &[u8] {
-        todo!()
+    fn private_key_bytes(&self) -> Vec<u8> {
+        self.secret_key
+            .as_ref()
+            .map_or(vec![], |x| x.to_bytes_compressed_form().to_vec())
     }
 }
 
@@ -139,11 +167,10 @@ impl DIDCore for Bls12381KeyPair {
                             self.public_key.g1.as_slice(),
                             base64::URL_SAFE_NO_PAD,
                         )),
-                        y: None,
-                        d: None,
+                        ..Default::default()
                     }),
                 }),
-                private_key: None,
+                ..Default::default()
             },
             VerificationMethod {
                 id: format!("{}#{}", controller, self.get_fingerprint_g2()),
@@ -163,11 +190,10 @@ impl DIDCore for Bls12381KeyPair {
                             self.public_key.g2.to_bytes_compressed_form(),
                             base64::URL_SAFE_NO_PAD,
                         )),
-                        y: None,
-                        d: None,
+                        ..Default::default()
                     }),
                 }),
-                private_key: None,
+                ..Default::default()
             },
         ]
     }

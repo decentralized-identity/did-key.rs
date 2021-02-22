@@ -1,7 +1,7 @@
 use super::{generate_seed, Ecdsa};
 use crate::{
     didcore::{Config, KeyFormat, JWK},
-    traits::{DIDCore, Ecdh, Fingerprint, KeyMaterial},
+    traits::{DIDCore, Ecdh, Fingerprint, Generate, KeyMaterial},
     AsymmetricKey, Document, Error, KeyPair, Payload, VerificationMethod,
 };
 use p256::{
@@ -18,7 +18,7 @@ impl std::fmt::Debug for P256KeyPair {
     }
 }
 
-impl KeyMaterial for P256KeyPair {
+impl Generate for P256KeyPair {
     fn new_with_seed(seed: &[u8]) -> Self {
         let secret_seed = generate_seed(&seed.to_vec()).expect("invalid seed");
 
@@ -51,16 +51,26 @@ impl KeyMaterial for P256KeyPair {
         Self::new_with_seed(vec![].as_slice())
     }
 
-    fn from_secret_key(_: &[u8]) -> Self {
-        todo!()
-    }
+    fn from_secret_key(secret_key_bytes: &[u8]) -> Self {
+        let sk = SigningKey::new(&secret_key_bytes).expect("couldn't initialize secret key");
+        let pk = VerifyKey::from(&sk);
 
+        P256KeyPair {
+            public_key: pk, //.to_encoded_point(false),
+            secret_key: Some(sk),
+        }
+    }
+}
+
+impl KeyMaterial for P256KeyPair {
     fn public_key_bytes(&self) -> Vec<u8> {
-        todo!()
+        self.public_key.to_encoded_point(false).as_bytes().to_vec()
     }
 
-    fn private_key_bytes(&self) -> &[u8] {
-        todo!()
+    fn private_key_bytes(&self) -> Vec<u8> {
+        self.secret_key
+            .as_ref()
+            .map_or(vec![], |x| x.to_bytes().as_slice().to_vec())
     }
 }
 
@@ -86,7 +96,7 @@ impl Ecdsa for P256KeyPair {
                 .is_ok()
             {
                 true => Ok(()),
-                false => Err(Error::Unknown("invalid signature")),
+                false => Err(Error::Unknown("invalid signature".into())),
             },
             _ => unimplemented!("payload type not supported for this key"),
         }
@@ -103,21 +113,25 @@ impl DIDCore for P256KeyPair {
             },
             controller: controller.to_string(),
             public_key: Some(match config.use_jose_format {
-                false => {
-                    KeyFormat::Base58(bs58::encode(self.public_key.to_encoded_point(false).as_bytes()).into_string())
-                }
+                false => KeyFormat::Base58(bs58::encode(self.public_key_bytes()).into_string()),
                 true => KeyFormat::JWK(JWK {
                     key_type: "EC".into(),
                     curve: "P-256".into(),
-                    x: Some(base64::encode_config(
-                        self.public_key.to_encoded_point(false).as_bytes(),
-                        base64::URL_SAFE_NO_PAD,
-                    )),
-                    y: None,
-                    d: None,
+                    x: Some(base64::encode_config(self.public_key_bytes(), base64::URL_SAFE_NO_PAD)),
+                    ..Default::default()
                 }),
             }),
-            private_key: None,
+            private_key: self.secret_key.as_ref().map(|_| match config.use_jose_format {
+                false => KeyFormat::Base58(bs58::encode(self.public_key_bytes()).into_string()),
+                true => KeyFormat::JWK(JWK {
+                    key_type: "EC".into(),
+                    curve: "P-256".into(),
+                    x: Some(base64::encode_config(self.public_key_bytes(), base64::URL_SAFE_NO_PAD)),
+                    d: Some(base64::encode_config(self.private_key_bytes(), base64::URL_SAFE_NO_PAD)),
+                    ..Default::default()
+                }),
+            }),
+            ..Default::default()
         }]
     }
 
@@ -179,7 +193,7 @@ pub mod test {
 
     #[test]
     fn did_document() {
-        let key = generate::<P256KeyPair>();
+        let key = generate::<P256KeyPair>(None);
 
         let did_doc = key.get_did_document(Config {
             use_jose_format: false,

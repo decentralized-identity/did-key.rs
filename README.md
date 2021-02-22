@@ -5,6 +5,8 @@
 This crate is intended to provide basic support for `did:key` methods. It has no external dependencies and can be compiled for any target.
 It was originally designed for use with [DIDComm Extension for gRPC](https://github.com/trinsic-id/didcomm-extension-grpc), but we recognized it may be useful if this was an independent library.
 
+[![Rust](https://github.com/decentralized-identity/did-key.rs/actions/workflows/rust.yml/badge.svg?branch=main)](https://github.com/decentralized-identity/did-key.rs/actions/workflows/rust.yml)
+
 # History and Governance
 
 Originally [donated](https://medium.com/decentralized-identity/trinsic-donates-did-key-rs-to-i-d-wg-8a278f37bcd0) to DIF by [Trinsic](trinsic.id). Ongoing management and governance done through the [Identifier and Discovery WG](https://github.com/decentralized-identity/identifiers-discovery).
@@ -22,7 +24,7 @@ Originally [donated](https://medium.com/decentralized-identity/trinsic-donates-d
 [Install from crates.io](https://crates.io/crates/did-key)
 
 ```rust
-did-key = "0.0.4"
+did-key = "*"
 ```
 
 To resolve a did formatted URI:
@@ -31,13 +33,14 @@ To resolve a did formatted URI:
 use did_key::*;
 
 let key = resolve("did:key:z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL").unwrap();
+let did_doc = key.get_did_document(Config::default());
 
 ```
 
 Generate new key:
 
 ```rust
-let key = generate::<Ed25519KeyPair>());
+let key = generate::<Ed25519KeyPair>(None);
 
 println!("{}", key.fingerprint());
 ```
@@ -45,7 +48,7 @@ println!("{}", key.fingerprint());
 Sign and verify:
 
 ```rust
-let key = generate::<P256KeyPair>());
+let key = generate::<P256KeyPair>(None);
 let message = b"message to be signed";
 
 let signature = key.sign(Payload::Buffer(message.to_vec()));
@@ -57,7 +60,7 @@ assert!(valid);
 Create DID Document
 
 ```rust
-let key = generate::<Ed25519KeyPair>());
+let key = generate::<Ed25519KeyPair>(None);
 let did_doc = key.get_did_document(Config::default());
 
 let doc_json = serde_json::to_string_pretty(&did_doc).unwrap();

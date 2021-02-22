@@ -1,7 +1,7 @@
 use super::{generate_seed, Ecdsa};
 use crate::{
     didcore::{Config, Document, KeyFormat, VerificationMethod, JWK},
-    traits::{DIDCore, Ecdh, Fingerprint},
+    traits::{DIDCore, Ecdh, Fingerprint, Generate},
     x25519::X25519KeyPair,
     AsymmetricKey, Error, KeyMaterial, KeyPair, Payload,
 };
@@ -78,29 +78,22 @@ impl DIDCore for Ed25519KeyPair {
             },
             controller: controller.to_string(),
             public_key: Some(match config.use_jose_format {
-                false => KeyFormat::Base58(bs58::encode(self.public_key.as_bytes()).into_string()),
+                false => KeyFormat::Base58(bs58::encode(self.public_key_bytes()).into_string()),
                 true => KeyFormat::JWK(JWK {
                     key_type: "OKP".into(),
                     curve: "Ed25519".into(),
-                    x: Some(base64::encode_config(
-                        self.public_key.as_bytes(),
-                        base64::URL_SAFE_NO_PAD,
-                    )),
-                    y: None,
-                    d: None,
+                    x: Some(base64::encode_config(self.public_key_bytes(), base64::URL_SAFE_NO_PAD)),
+                    ..Default::default()
                 }),
             }),
-            private_key: self.secret_key.as_ref().map(|x| match config.use_jose_format {
-                false => KeyFormat::Base58(bs58::encode(self.public_key.as_bytes()).into_string()),
+            private_key: self.secret_key.as_ref().map(|_| match config.use_jose_format {
+                false => KeyFormat::Base58(bs58::encode(self.public_key_bytes()).into_string()),
                 true => KeyFormat::JWK(JWK {
                     key_type: "OKP".into(),
                     curve: "Ed25519".into(),
-                    x: Some(base64::encode_config(
-                        self.public_key.as_bytes(),
-                        base64::URL_SAFE_NO_PAD,
-                    )),
-                    y: None,
-                    d: Some(base64::encode_config(x.as_bytes(), base64::URL_SAFE_NO_PAD)),
+                    x: Some(base64::encode_config(self.public_key_bytes(), base64::URL_SAFE_NO_PAD)),
+                    d: Some(base64::encode_config(self.private_key_bytes(), base64::URL_SAFE_NO_PAD)),
+                    ..Default::default()
                 }),
             }),
         }]
@@ -126,7 +119,7 @@ impl DIDCore for Ed25519KeyPair {
     }
 }
 
-impl KeyMaterial for Ed25519KeyPair {
+impl Generate for Ed25519KeyPair {
     fn new() -> Ed25519KeyPair {
         Self::new_with_seed(vec![].as_slice())
     }
@@ -159,13 +152,14 @@ impl KeyMaterial for Ed25519KeyPair {
             public_key: pk,
         }
     }
-
+}
+impl KeyMaterial for Ed25519KeyPair {
     fn public_key_bytes(&self) -> Vec<u8> {
         self.public_key.as_bytes().to_vec()
     }
 
-    fn private_key_bytes(&self) -> &[u8] {
-        todo!()
+    fn private_key_bytes(&self) -> Vec<u8> {
+        self.secret_key.as_ref().map_or(vec![], |x| x.to_bytes().to_vec())
     }
 }
 
@@ -188,7 +182,7 @@ impl Ecdsa for Ed25519KeyPair {
         match payload {
             Payload::Buffer(payload) => match self.public_key.verify(payload.as_slice(), &sig) {
                 Ok(_) => Ok(()),
-                _ => Err(Error::Unknown("verify failed")),
+                _ => Err(Error::Unknown("verify failed".into())),
             },
             _ => unimplemented!("payload type not supported for this key"),
         }
@@ -209,7 +203,7 @@ impl From<Ed25519KeyPair> for KeyPair {
 
 #[cfg(test)]
 pub mod test {
-    use crate::{didcore::CONFIG_LD_PRIVATE, generate_with_seed, Payload};
+    use crate::{didcore::CONFIG_LD_PRIVATE, generate, Payload};
 
     use super::*;
     #[test]
@@ -233,7 +227,7 @@ pub mod test {
         let secret_key = "6Lx39RyWn3syuozAe2WiPdAYn1ctMx17t8yrBMGFBmZy";
         let public_key = "6fioC1zcDPyPEL19pXRS2E4iJ46zH7xP6uSgAaPdwDrx";
 
-        let sk = generate_with_seed::<Ed25519KeyPair>(bs58::decode(secret_key).into_vec().unwrap().as_slice());
+        let sk = generate::<Ed25519KeyPair>(Some(bs58::decode(secret_key).into_vec().unwrap().as_slice()));
         let message = b"super secret message";
 
         let signature = sk.sign(Payload::Buffer(message.to_vec()));
