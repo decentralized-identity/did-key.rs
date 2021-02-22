@@ -202,7 +202,7 @@ impl From<Ed25519KeyPair> for KeyPair {
 
 #[cfg(test)]
 pub mod test {
-    use crate::{didcore::CONFIG_LD_PRIVATE, generate_with_seed, Payload};
+    use crate::{didcore::CONFIG_LD_PRIVATE, generate, Payload};
 
     use super::*;
     #[test]
@@ -226,7 +226,7 @@ pub mod test {
         let secret_key = "6Lx39RyWn3syuozAe2WiPdAYn1ctMx17t8yrBMGFBmZy";
         let public_key = "6fioC1zcDPyPEL19pXRS2E4iJ46zH7xP6uSgAaPdwDrx";
 
-        let sk = generate_with_seed::<Ed25519KeyPair>(bs58::decode(secret_key).into_vec().unwrap().as_slice());
+        let sk = generate::<Ed25519KeyPair>(Some(bs58::decode(secret_key).into_vec().unwrap().as_slice()));
         let message = b"super secret message";
 
         let signature = sk.sign(Payload::Buffer(message.to_vec()));

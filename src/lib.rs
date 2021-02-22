@@ -1,10 +1,12 @@
 #![feature(trait_alias)]
 
+use base64::URL_SAFE;
 use did_url::DID;
 
 use std::{
     convert::{TryFrom, TryInto},
     str::FromStr,
+    todo,
 };
 
 pub enum KeyPair {
@@ -35,24 +37,20 @@ pub enum Error<'a> {
 
 pub trait DIDKey = KeyMaterial + Ecdsa + Ecdh + DIDCore + Fingerprint + Into<KeyPair>;
 
-pub fn generate<T: DIDKey>() -> KeyPair {
-    T::new().into()
-}
-
-pub fn generate_with_seed<T: DIDKey>(seed: &[u8]) -> KeyPair {
-    T::new_with_seed(seed).into()
+pub fn generate<T: DIDKey>(seed: Option<&[u8]>) -> KeyPair {
+    T::new_with_seed(seed.map_or(vec![].as_slice(), |x| x)).into()
 }
 
 pub fn resolve(did_uri: &str) -> Result<KeyPair, String> {
     KeyPair::try_from(did_uri)
 }
 
-pub fn from_public_key<T: DIDKey>(public_key: &[u8]) -> KeyPair {
-    T::from_public_key(public_key).into()
-}
-
-pub fn from_private_key<T: DIDKey>(private_key: &[u8]) -> KeyPair {
-    T::from_secret_key(private_key).into()
+pub fn from_existing_key<T: DIDKey>(public_key: &[u8], private_key: Option<&[u8]>) -> KeyPair {
+    if private_key.is_some() {
+        T::from_secret_key(private_key.unwrap()).into()
+    } else {
+        T::from_public_key(public_key).into()
+    }
 }
 
 impl Ecdsa for KeyPair {
@@ -168,6 +166,46 @@ impl TryFrom<&str> for KeyPair {
     }
 }
 
+impl From<&VerificationMethod> for KeyPair {
+    fn from(vm: &VerificationMethod) -> Self {
+        if vm.private_key.is_some() {
+            vm.private_key.as_ref().unwrap().into()
+        } else {
+            vm.public_key.as_ref().unwrap().into()
+        }
+    }
+}
+
+impl From<&KeyFormat> for KeyPair {
+    fn from(key_format: &KeyFormat) -> Self {
+        match key_format {
+            KeyFormat::Base58(_) => todo!(),
+            KeyFormat::Multibase(_) => todo!(),
+            KeyFormat::JWK(jwk) => match jwk.curve.as_str() {
+                "Ed25519" => {
+                    if jwk.d.is_some() {
+                        Ed25519KeyPair::from_secret_key(
+                            base64::decode_config(jwk.d.as_ref().unwrap(), URL_SAFE)
+                                .unwrap()
+                                .as_slice(),
+                        )
+                        .into()
+                    } else {
+                        Ed25519KeyPair::from_public_key(
+                            base64::decode_config(jwk.x.as_ref().unwrap(), URL_SAFE)
+                                .unwrap()
+                                .as_slice(),
+                        )
+                        .into()
+                    }
+                }
+                "X25519" => todo!(),
+                _ => unimplemented!("method not supported"),
+            },
+        }
+    }
+}
+
 impl From<&[u8]> for Payload {
     fn from(data: &[u8]) -> Self {
         Payload::Buffer(data.to_vec())
@@ -223,7 +261,7 @@ pub mod test {
 
     #[test]
     fn test_did_doc_ld() {
-        let key = generate::<Ed25519KeyPair>();
+        let key = generate::<Ed25519KeyPair>(None);
         let did_doc = key.get_did_document(Config::default());
 
         let json = serde_json::to_string_pretty(&did_doc).unwrap();
@@ -235,7 +273,7 @@ pub mod test {
 
     #[test]
     fn test_did_doc_json() {
-        let key = generate::<X25519KeyPair>();
+        let key = generate::<X25519KeyPair>(None);
         let did_doc = key.get_did_document(CONFIG_JOSE_PUBLIC);
 
         let json = serde_json::to_string_pretty(&did_doc).unwrap();
@@ -247,7 +285,7 @@ pub mod test {
 
     #[test]
     fn test_did_doc_json_bls() {
-        let key = generate::<Bls12381KeyPair>();
+        let key = generate::<Bls12381KeyPair>(None);
         let did_doc = key.get_did_document(CONFIG_JOSE_PUBLIC);
 
         let json = serde_json::to_string_pretty(&did_doc).unwrap();
@@ -278,7 +316,7 @@ pub mod test {
 
     #[test]
     fn test_generate_new_key() {
-        let key = generate::<P256KeyPair>();
+        let key = generate::<P256KeyPair>(None);
         let message = b"secret message";
 
         println!("{}", key.fingerprint());

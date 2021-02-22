@@ -191,7 +191,7 @@ pub mod test {
 
     #[test]
     fn did_document() {
-        let key = generate::<P256KeyPair>();
+        let key = generate::<P256KeyPair>(None);
 
         let did_doc = key.get_did_document(Config {
             use_jose_format: false,

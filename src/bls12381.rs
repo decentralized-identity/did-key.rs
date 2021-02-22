@@ -103,7 +103,30 @@ impl KeyMaterial for Bls12381KeyPair {
     }
 
     fn from_secret_key(secret_key_bytes: &[u8]) -> Bls12381KeyPair {
-        todo!()
+        use sha2::digest::generic_array::{typenum::U48, GenericArray};
+
+        let result: &GenericArray<u8, U48> = GenericArray::<u8, U48>::from_slice(secret_key_bytes);
+        let sk = Fr::from_okm(&result);
+
+        let mut pk1 = G1::one();
+        pk1.mul_assign(sk);
+
+        let mut pk1_bytes = Vec::new();
+        pk1.serialize(&mut pk1_bytes, true).unwrap();
+
+        let mut pk2 = G2::one();
+        pk2.mul_assign(sk);
+
+        let mut pk2_bytes = Vec::new();
+        pk2.serialize(&mut pk2_bytes, true).unwrap();
+
+        Bls12381KeyPair {
+            public_key: CyclicGroup {
+                g1: pk1_bytes.to_vec(),
+                g2: DeterministicPublicKey::try_from(pk2_bytes).unwrap(),
+            },
+            secret_key: Some(SecretKey::from(sk)),
+        }
     }
 
     fn public_key_bytes(&self) -> Vec<u8> {

@@ -10,7 +10,7 @@ pub trait KeyMaterial {
     /// Generate instance from existing public key
     fn from_public_key(public_key: &[u8]) -> Self;
     /// Generate instance from existing secret key
-    fn from_secret_key(public_key: &[u8]) -> Self;
+    fn from_secret_key(private_key: &[u8]) -> Self;
     /// Returns the public key bytes as slice
     fn public_key_bytes(&self) -> Vec<u8>;
     /// Returns the secret key bytes as slice

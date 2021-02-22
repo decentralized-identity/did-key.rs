@@ -219,7 +219,7 @@ pub mod test {
 
     #[test]
     fn did_document() {
-        let key = generate::<Secp256k1KeyPair>();
+        let key = generate::<Secp256k1KeyPair>(None);
 
         let did_doc = key.get_did_document(Config {
             use_jose_format: true,
