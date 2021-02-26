@@ -12,15 +12,15 @@ pub const CONFIG_JOSE_PUBLIC: Config = Config {
 };
 pub const CONFIG_JOSE_PRIVATE: Config = Config {
     use_jose_format: true,
-    serialize_secrets: false,
+    serialize_secrets: true,
 };
 pub const CONFIG_LD_PUBLIC: Config = Config {
-    use_jose_format: true,
+    use_jose_format: false,
     serialize_secrets: false,
 };
 pub const CONFIG_LD_PRIVATE: Config = Config {
-    use_jose_format: true,
-    serialize_secrets: false,
+    use_jose_format: false,
+    serialize_secrets: true,
 };
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]

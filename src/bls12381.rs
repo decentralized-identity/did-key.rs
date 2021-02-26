@@ -159,14 +159,21 @@ impl DIDCore for Bls12381KeyPair {
                 },
                 controller: controller.to_string(),
                 public_key: Some(match config.use_jose_format {
-                    false => KeyFormat::Base58(bs58::encode(self.public_key.g1.as_slice()).into_string()),
+                    false => KeyFormat::Base58(bs58::encode(self.public_key_bytes()).into_string()),
                     true => KeyFormat::JWK(JWK {
                         key_type: "EC".into(),
                         curve: "BLS12381_G1".into(),
-                        x: Some(base64::encode_config(
-                            self.public_key.g1.as_slice(),
-                            base64::URL_SAFE_NO_PAD,
-                        )),
+                        x: Some(base64::encode_config(self.public_key_bytes(), base64::URL_SAFE_NO_PAD)),
+                        ..Default::default()
+                    }),
+                }),
+                private_key: self.secret_key.as_ref().map(|_| match config.use_jose_format {
+                    false => KeyFormat::Base58(bs58::encode(self.public_key_bytes()).into_string()),
+                    true => KeyFormat::JWK(JWK {
+                        key_type: "EC".into(),
+                        curve: "BLS12381_G1".into(),
+                        x: Some(base64::encode_config(self.public_key_bytes(), base64::URL_SAFE_NO_PAD)),
+                        d: Some(base64::encode_config(self.private_key_bytes(), base64::URL_SAFE_NO_PAD)),
                         ..Default::default()
                     }),
                 }),
@@ -186,10 +193,17 @@ impl DIDCore for Bls12381KeyPair {
                     true => KeyFormat::JWK(JWK {
                         key_type: "EC".into(),
                         curve: "BLS12381_G2".into(),
-                        x: Some(base64::encode_config(
-                            self.public_key.g2.to_bytes_compressed_form(),
-                            base64::URL_SAFE_NO_PAD,
-                        )),
+                        x: Some(base64::encode_config(self.public_key_bytes(), base64::URL_SAFE_NO_PAD)),
+                        ..Default::default()
+                    }),
+                }),
+                private_key: self.secret_key.as_ref().map(|_| match config.use_jose_format {
+                    false => KeyFormat::Base58(bs58::encode(self.public_key_bytes()).into_string()),
+                    true => KeyFormat::JWK(JWK {
+                        key_type: "EC".into(),
+                        curve: "BLS12381_G2".into(),
+                        x: Some(base64::encode_config(self.public_key_bytes(), base64::URL_SAFE_NO_PAD)),
+                        d: Some(base64::encode_config(self.private_key_bytes(), base64::URL_SAFE_NO_PAD)),
                         ..Default::default()
                     }),
                 }),
