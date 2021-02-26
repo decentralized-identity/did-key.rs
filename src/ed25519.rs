@@ -70,33 +70,40 @@ impl Fingerprint for Ed25519KeyPair {
 
 impl DIDCore for Ed25519KeyPair {
     fn get_verification_methods(&self, config: Config, controller: &str) -> Vec<VerificationMethod> {
-        vec![VerificationMethod {
-            id: format!("{}#{}", controller, self.fingerprint()),
-            key_type: match config.use_jose_format {
-                false => "Ed25519VerificationKey2018".into(),
-                true => "JsonWebKey2020".into(),
+        vec![
+            VerificationMethod {
+                id: format!("{}#{}", controller, self.fingerprint()),
+                key_type: match config.use_jose_format {
+                    false => "Ed25519VerificationKey2018".into(),
+                    true => "JsonWebKey2020".into(),
+                },
+                controller: controller.to_string(),
+                public_key: Some(match config.use_jose_format {
+                    false => KeyFormat::Base58(bs58::encode(self.public_key_bytes()).into_string()),
+                    true => KeyFormat::JWK(JWK {
+                        key_type: "OKP".into(),
+                        curve: "Ed25519".into(),
+                        x: Some(base64::encode_config(self.public_key_bytes(), base64::URL_SAFE_NO_PAD)),
+                        ..Default::default()
+                    }),
+                }),
+                private_key: self.secret_key.as_ref().map(|_| match config.use_jose_format {
+                    false => KeyFormat::Base58(bs58::encode(self.public_key_bytes()).into_string()),
+                    true => KeyFormat::JWK(JWK {
+                        key_type: "OKP".into(),
+                        curve: "Ed25519".into(),
+                        x: Some(base64::encode_config(self.public_key_bytes(), base64::URL_SAFE_NO_PAD)),
+                        d: Some(base64::encode_config(self.private_key_bytes(), base64::URL_SAFE_NO_PAD)),
+                        ..Default::default()
+                    }),
+                }),
             },
-            controller: controller.to_string(),
-            public_key: Some(match config.use_jose_format {
-                false => KeyFormat::Base58(bs58::encode(self.public_key_bytes()).into_string()),
-                true => KeyFormat::JWK(JWK {
-                    key_type: "OKP".into(),
-                    curve: "Ed25519".into(),
-                    x: Some(base64::encode_config(self.public_key_bytes(), base64::URL_SAFE_NO_PAD)),
-                    ..Default::default()
-                }),
-            }),
-            private_key: self.secret_key.as_ref().map(|_| match config.use_jose_format {
-                false => KeyFormat::Base58(bs58::encode(self.public_key_bytes()).into_string()),
-                true => KeyFormat::JWK(JWK {
-                    key_type: "OKP".into(),
-                    curve: "Ed25519".into(),
-                    x: Some(base64::encode_config(self.public_key_bytes(), base64::URL_SAFE_NO_PAD)),
-                    d: Some(base64::encode_config(self.private_key_bytes(), base64::URL_SAFE_NO_PAD)),
-                    ..Default::default()
-                }),
-            }),
-        }]
+            self.get_x25519()
+                .get_verification_methods(config, controller)
+                .first()
+                .unwrap()
+                .to_owned(),
+        ]
     }
 
     fn get_did_document(&self, config: Config) -> Document {
