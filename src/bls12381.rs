@@ -198,7 +198,7 @@ impl DIDCore for Bls12381KeyPair {
                     }),
                 }),
                 private_key: self.secret_key.as_ref().map(|_| match config.use_jose_format {
-                    false => KeyFormat::Base58(bs58::encode(self.public_key_bytes()).into_string()),
+                    false => KeyFormat::Base58(bs58::encode(self.private_key_bytes()).into_string()),
                     true => KeyFormat::JWK(JWK {
                         key_type: "EC".into(),
                         curve: "BLS12381_G2".into(),
