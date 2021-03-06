@@ -169,11 +169,7 @@ impl TryFrom<&str> for KeyPair {
             Err(_) => return Err(Error::Unknown("couldn't parse DID URI".into())),
         };
 
-        let pub_key = match url
-            .fragment()
-            .map_or(url.to_string().replace("did:key:", ""), |x| x.to_string())
-            .strip_prefix("z")
-        {
+        let pub_key = match url.method_id().strip_prefix("z") {
             Some(url) => match bs58::decode(url).into_vec() {
                 Ok(url) => url,
                 Err(_) => return Err(Error::Unknown("invalid base58 encoded data in DID URI".into())),
@@ -341,9 +337,10 @@ pub mod test {
     fn test_key_from_uri() {
         let uri = "did:key:z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL";
 
-        let key = resolve(uri);
+        let key = resolve(uri).unwrap();
 
-        assert!(matches!(key.unwrap(), KeyPair::Ed25519(_)));
+        assert!(matches!(key, KeyPair::Ed25519(_)));
+        assert_eq!("z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL", key.fingerprint())
     }
 
     #[test]
@@ -354,6 +351,17 @@ pub mod test {
         let key = resolve(uri);
 
         assert!(matches!(key.unwrap(), KeyPair::Ed25519(_)));
+    }
+
+    #[test]
+    fn test_key_from_uri_fragment_x25519() {
+        let uri =
+            "did:key:z6Mkt6QT8FPajKXDrtMefkjxRQENd9wFzKkDFomdQAVFzpzm#z6LSfDq6DuofPeZUqNEmdZsxpvfHvSoUXGEWFhw7JHk4cynN";
+
+        let key = resolve(uri).unwrap();
+
+        assert!(matches!(key, KeyPair::Ed25519(_)));
+        assert_eq!("z6Mkt6QT8FPajKXDrtMefkjxRQENd9wFzKkDFomdQAVFzpzm", key.fingerprint())
     }
 
     #[test]
