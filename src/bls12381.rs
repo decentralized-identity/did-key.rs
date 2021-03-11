@@ -301,6 +301,7 @@ fn gen_sk(msg: &[u8]) -> Fr {
 #[cfg(test)]
 pub mod test {
     use super::*;
+    use crate::CONFIG_LD_PRIVATE;
 
     #[test]
     fn test_signature() {
@@ -369,5 +370,18 @@ pub mod test {
         let pk1 = actual.public_key_bytes();
 
         assert_eq!(pk, pk1);
+    }
+
+    #[test]
+    fn test_resolve() {
+        let key = crate::generate::<Bls12381KeyPair>(None);
+        let doc = key.get_did_document(CONFIG_LD_PRIVATE);
+        let g2 = doc.authentication.unwrap()[1].clone();
+
+        let resolved = crate::resolve(g2.as_str());
+
+        let doc2 = resolved.unwrap().get_did_document(CONFIG_LD_PRIVATE);
+
+        assert_eq!(doc.id, doc2.id)
     }
 }
