@@ -268,7 +268,7 @@ pub use {
     crate::secp256k1::Secp256k1KeyPair,
     bls12381::Bls12381KeyPair,
     didcore::{
-        Document, KeyFormat, VerificationMethod, CONFIG_JOSE_PRIVATE, CONFIG_JOSE_PUBLIC, CONFIG_LD_PRIVATE,
+        Config, Document, KeyFormat, VerificationMethod, CONFIG_JOSE_PRIVATE, CONFIG_JOSE_PUBLIC, CONFIG_LD_PRIVATE,
         CONFIG_LD_PUBLIC, JWK,
     },
     ed25519::Ed25519KeyPair,
