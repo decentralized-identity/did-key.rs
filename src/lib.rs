@@ -181,7 +181,7 @@ impl TryFrom<&str> for KeyPair {
             [0xed, 0x1] => KeyPair::Ed25519(Ed25519KeyPair::from_public_key(&pub_key[2..])),
             [0xec, 0x1] => KeyPair::X25519(X25519KeyPair::from_public_key(&pub_key[2..])),
             [0xee, 0x1] => KeyPair::Bls12381G1G2(Bls12381KeyPair::from_public_key(&pub_key[2..])),
-            [0x12, 0x0] => KeyPair::P256(P256KeyPair::from_public_key(&pub_key[3..])),
+            [0x80, 0x24] => KeyPair::P256(P256KeyPair::from_public_key(&pub_key[2..])),
             [0xe7, 0x0] => KeyPair::Secp256k1(Secp256k1KeyPair::from_public_key(&pub_key[2..])),
             _ => unimplemented!("unsupported key type"),
         });

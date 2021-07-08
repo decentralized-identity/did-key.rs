@@ -31,7 +31,7 @@ libsecp256k1 = "0.3.5"
 funty = "=1.1.0" # TODO: Remove this, once issue is fixed https://github.com/bitvecto-rs/bitvec/issues/105. Required for `cargo publish`
 
 [dependencies.p256]
-version = "0.5.2"
+version = "0.9.0"
 features = ["ecdsa", "ecdh"]
 
 [dev-dependencies]
