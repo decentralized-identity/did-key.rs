@@ -6,7 +6,7 @@ use crate::{
 };
 use p256::{
     ecdsa::{signature::Signer, signature::Verifier, Signature, SigningKey, VerifyingKey},
-    CompressedPoint, EncodedPoint,
+    EncodedPoint,
 };
 use std::convert::TryFrom;
 
@@ -32,16 +32,6 @@ impl Generate for P256KeyPair {
     }
 
     fn from_public_key(public_key: &[u8]) -> Self {
-        let pk: Vec<u8> = match public_key.len() == 65 {
-            true => public_key.to_vec(),
-            false => {
-                let mut pkk = public_key.to_vec();
-                pkk.insert(0, 0x04);
-                pkk
-            }
-        };
-        let cp = CompressedPoint::from_slice(public_key);
-        let pp = EncodedPoint::from_bytes(public_key);
         P256KeyPair {
             secret_key: None,
             public_key: VerifyingKey::from_encoded_point(&EncodedPoint::from_bytes(public_key).expect("invalid key"))
