@@ -5,12 +5,12 @@ use crate::{
     AsymmetricKey, Document, Error, KeyPair, Payload, VerificationMethod,
 };
 use p256::{
-    ecdsa::{signature::Signer, signature::Verifier, Signature, SigningKey, VerifyKey},
+    ecdsa::{signature::Signer, signature::Verifier, Signature, SigningKey, VerifyingKey},
     EncodedPoint,
 };
 use std::convert::TryFrom;
 
-pub type P256KeyPair = AsymmetricKey<VerifyKey, SigningKey>;
+pub type P256KeyPair = AsymmetricKey<VerifyingKey, SigningKey>;
 
 impl std::fmt::Debug for P256KeyPair {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -22,27 +22,19 @@ impl Generate for P256KeyPair {
     fn new_with_seed(seed: &[u8]) -> Self {
         let secret_seed = generate_seed(&seed.to_vec()).expect("invalid seed");
 
-        let sk = SigningKey::new(&secret_seed).expect("Couldn't create key");
-        let pk = VerifyKey::from(&sk);
+        let sk = SigningKey::from_bytes(&secret_seed).expect("Couldn't create key");
+        let pk = VerifyingKey::from(&sk);
 
         P256KeyPair {
-            public_key: pk, //.to_encoded_point(false),
+            public_key: pk,
             secret_key: Some(sk),
         }
     }
 
     fn from_public_key(public_key: &[u8]) -> Self {
-        let pk: Vec<u8> = match public_key.len() == 65 {
-            true => public_key.to_vec(),
-            false => {
-                let mut pkk = public_key.to_vec();
-                pkk.insert(0, 0x04);
-                pkk
-            }
-        };
         P256KeyPair {
-            secret_key: None, //.to_encoded_point(false),
-            public_key: VerifyKey::from_encoded_point(&EncodedPoint::from_bytes(pk.as_slice()).expect("invalid key"))
+            secret_key: None,
+            public_key: VerifyingKey::from_encoded_point(&EncodedPoint::from_bytes(public_key).expect("invalid key"))
                 .expect("invalid point"),
         }
     }
@@ -52,11 +44,11 @@ impl Generate for P256KeyPair {
     }
 
     fn from_secret_key(secret_key_bytes: &[u8]) -> Self {
-        let sk = SigningKey::new(&secret_key_bytes).expect("couldn't initialize secret key");
-        let pk = VerifyKey::from(&sk);
+        let sk = SigningKey::from_bytes(&secret_key_bytes).expect("couldn't initialize secret key");
+        let pk = VerifyingKey::from(&sk);
 
         P256KeyPair {
-            public_key: pk, //.to_encoded_point(false),
+            public_key: pk,
             secret_key: Some(sk),
         }
     }
@@ -64,7 +56,7 @@ impl Generate for P256KeyPair {
 
 impl KeyMaterial for P256KeyPair {
     fn public_key_bytes(&self) -> Vec<u8> {
-        self.public_key.to_encoded_point(false).as_bytes().to_vec()
+        self.public_key.to_encoded_point(true).as_bytes().to_vec()
     }
 
     fn private_key_bytes(&self) -> Vec<u8> {
@@ -156,8 +148,8 @@ impl DIDCore for P256KeyPair {
 
 impl Fingerprint for P256KeyPair {
     fn fingerprint(&self) -> String {
-        let codec: &[u8] = &[0x12, 0x0, 0x1];
-        let data = [codec, self.public_key.to_encoded_point(false).as_ref()].concat();
+        let codec: &[u8] = &[0x80, 0x24];
+        let data = [codec, self.public_key.to_encoded_point(true).as_ref()].concat();
         format!("z{}", bs58::encode(data).into_string())
     }
 }
@@ -176,7 +168,9 @@ impl From<P256KeyPair> for KeyPair {
 
 #[cfg(test)]
 pub mod test {
-    use crate::generate;
+    use base64::URL_SAFE;
+
+    use crate::{generate, resolve};
 
     use super::*;
     #[test]
@@ -201,5 +195,28 @@ pub mod test {
         });
 
         println!("{}", serde_json::to_string_pretty(&did_doc).unwrap())
+    }
+
+    #[test]
+    fn resolve_key() {
+        let did_uri = "did:key:zDnaerDaTF5BXEavCrfRZEk316dpbLsfPDZ3WJ5hRTPFU2169";
+
+        let resolved = resolve(did_uri).unwrap();
+
+        matches!(resolved, KeyPair::P256(_));
+    }
+
+    #[test]
+    fn from_secret_key() {
+        let sk = base64::decode_config("gPh-VvVS8MbvKQ9LSVVmfnxnKjHn4Tqj0bmbpehRlpc", URL_SAFE).unwrap();
+
+        let keypair = P256KeyPair::from_secret_key(&sk);
+        let did_doc = keypair.get_did_document(Config::default());
+
+        assert_eq!(
+            keypair.fingerprint(),
+            "zDnaerx9CtbPJ1q36T5Ln5wYt3MQYeGRG5ehnPAmxcf5mDZpv"
+        );
+        assert_eq!(did_doc.id, "did:key:zDnaerx9CtbPJ1q36T5Ln5wYt3MQYeGRG5ehnPAmxcf5mDZpv");
     }
 }
