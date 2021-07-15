@@ -108,7 +108,7 @@ impl Generate for Bls12381KeyPair {
         use sha2::digest::generic_array::{typenum::U48, GenericArray};
 
         let result: &GenericArray<u8, U48> = GenericArray::<u8, U48>::from_slice(secret_key_bytes);
-        let sk = Fr::from_okm(&result);
+        let sk = Fr::from_okm(generic_array::GenericArray::from_slice(result.as_slice()));
 
         let mut pk1 = G1::one();
         pk1.mul_assign(sk);
@@ -295,7 +295,7 @@ fn gen_sk(msg: &[u8]) -> Fr {
     assert!(hkdf::Hkdf::<sha2::Sha256>::new(Some(SALT), &msg_prime[..])
         .expand(&[0, 48], &mut result)
         .is_ok());
-    Fr::from_okm(&result)
+    Fr::from_okm(generic_array::GenericArray::from_slice(result.as_slice()))
 }
 
 #[cfg(test)]
