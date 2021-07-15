@@ -5,7 +5,7 @@ use crate::{
 };
 
 use super::{generate_seed, Ecdh, Ecdsa};
-use secp256k1::{Message, PublicKey, SecretKey, SharedSecret, Signature};
+use libsecp256k1::{Message, PublicKey, SecretKey, SharedSecret, Signature};
 use sha2::{Digest, Sha256};
 
 pub type Secp256k1KeyPair = AsymmetricKey<PublicKey, SecretKey>;
@@ -63,7 +63,7 @@ impl Ecdsa for Secp256k1KeyPair {
                 let signature = match &self.secret_key {
                     Some(sig) => {
                         let message = Message::parse(&get_hash(&payload));
-                        secp256k1::sign(&message, &sig).0
+                        libsecp256k1::sign(&message, &sig).0
                     }
                     None => panic!("secret key not found"),
                 };
@@ -79,9 +79,9 @@ impl Ecdsa for Secp256k1KeyPair {
         match payload {
             Payload::Buffer(payload) => {
                 let message = Message::parse(&get_hash(&payload));
-                let signature = Signature::parse_slice(&signature).expect("Couldn't parse signature");
+                let signature = Signature::parse_standard_slice(&signature).expect("Couldn't parse signature");
 
-                verified = secp256k1::verify(&message, &signature, &self.public_key);
+                verified = libsecp256k1::verify(&message, &signature, &self.public_key);
             }
             _ => unimplemented!("payload type not supported for this key"),
         }
