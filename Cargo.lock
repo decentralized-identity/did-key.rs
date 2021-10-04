@@ -379,7 +379,6 @@ dependencies = [
  "curve25519-dalek",
  "did_url",
  "ed25519-dalek",
- "funty",
  "generic-array 0.12.4",
  "getrandom 0.2.3",
  "hkdf 0.11.0",
@@ -549,12 +548,6 @@ name = "fuchsia-cprng"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a06f77d526c1a601b7c4cdd98f54b5eaabffc14d5f2f0296febdc7f357c6d3ba"
-
-[[package]]
-name = "funty"
-version = "1.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1847abb9cb65d566acd5942e94aea9c8f547ad02c98e1649326fc0e8910b8b1e"
 
 [[package]]
 name = "generic-array"
