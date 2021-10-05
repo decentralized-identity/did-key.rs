@@ -1,6 +1,6 @@
 [package]
 name = "did-key"
-version = "0.0.13"
+version = "0.0.14"
 authors = ["Tomislav Markovski <tomislav@trinsic.id>"]
 edition = "2018"
 license = "Apache-2.0"
@@ -28,7 +28,6 @@ serde = "1.0"
 serde_json = "1.0"
 base64 = "0.13"
 libsecp256k1 = "0.5.0"
-funty = "=1.1.0" # TODO: Remove this, once issue is fixed https://github.com/bitvecto-rs/bitvec/issues/105. Required for `cargo publish`
 # remove after bbs version is updated with latest blake2 and generic-array >= 14
 generic-array = "0.12.4"
 
