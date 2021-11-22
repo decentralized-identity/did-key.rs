@@ -105,28 +105,19 @@ impl Generate for Bls12381KeyPair {
     }
 
     fn from_secret_key(secret_key_bytes: &[u8]) -> Bls12381KeyPair {
-        use sha2::digest::generic_array::{typenum::U48, GenericArray};
+        let sk = SecretKey::try_from(secret_key_bytes.to_vec()).unwrap();
+        let (pk2, _) = DeterministicPublicKey::new(Some(KeyGenOption::FromSecretKey(sk.clone())));
 
-        let result: &GenericArray<u8, U48> = GenericArray::<u8, U48>::from_slice(secret_key_bytes);
-        let sk = Fr::from_okm(generic_array::GenericArray::from_slice(result.as_slice()));
+        let mut secret_key_bytes = secret_key_bytes.clone();
+        let secret_key_bytes = Fr::deserialize(&mut secret_key_bytes, true).unwrap();
+        let mut pk = G1::one();
+        pk.mul_assign(secret_key_bytes);
 
-        let mut pk1 = G1::one();
-        pk1.mul_assign(sk);
-
-        let mut pk1_bytes = Vec::new();
-        pk1.serialize(&mut pk1_bytes, true).unwrap();
-
-        let mut pk2 = G2::one();
-        pk2.mul_assign(sk);
-
-        let mut pk2_bytes = Vec::new();
-        pk2.serialize(&mut pk2_bytes, true).unwrap();
+        let mut pk1 = vec![];
+        pk.serialize(&mut pk1, true).unwrap();
 
         Bls12381KeyPair {
-            public_key: CyclicGroup {
-                g1: pk1_bytes.to_vec(),
-                g2: DeterministicPublicKey::try_from(pk2_bytes).unwrap(),
-            },
+            public_key: CyclicGroup { g1: pk1, g2: pk2 },
             secret_key: Some(SecretKey::from(sk)),
         }
     }
@@ -395,5 +386,15 @@ pub mod test {
         let doc2 = resolved.unwrap().get_did_document(CONFIG_LD_PRIVATE);
 
         assert_eq!(doc.id, doc2.id)
+    }
+
+    #[test]
+    fn secret_key_size() {
+        let key = Bls12381KeyPair::new();
+        let sk_bytes = key.private_key_bytes();
+
+        assert_eq!(sk_bytes.len(), 32);
+        let key = Bls12381KeyPair::from_secret_key(&sk_bytes);
+        assert_eq!(key.private_key_bytes().len(), 32)
     }
 }
