@@ -1,4 +1,4 @@
-use crate::{didcore::Config, Document, Error, Payload, VerificationMethod};
+use crate::{didcore::Config, Document, Error, VerificationMethod};
 
 /// Return key material bytes
 pub trait KeyMaterial {
@@ -22,11 +22,11 @@ pub trait Generate: KeyMaterial {
 }
 
 /// Used for Elliptic Curve Digital Signature Algorithm
-pub trait Ecdsa {
+pub trait SignVerify {
     /// Performs sign operation
-    fn sign(&self, payload: Payload) -> Vec<u8>;
+    fn sign(&self, payload: &[u8]) -> Vec<u8>;
     /// Performs verify operation
-    fn verify(&self, payload: Payload, signature: &[u8]) -> Result<(), Error>;
+    fn verify(&self, payload: &[u8], signature: &[u8]) -> Result<(), Error>;
 }
 
 /// Used for Elliptic-curve Diffie–Hellman key exchange operations

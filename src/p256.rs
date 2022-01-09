@@ -1,8 +1,8 @@
-use super::{generate_seed, Ecdsa};
+use super::{generate_seed, SignVerify};
 use crate::{
     didcore::{Config, KeyFormat, JWK},
     traits::{DIDCore, Ecdh, Fingerprint, Generate, KeyMaterial},
-    AsymmetricKey, Document, Error, KeyPair, Payload, VerificationMethod,
+    AsymmetricKey, Document, Error, KeyPair, VerificationMethod,
 };
 use p256::{
     ecdsa::{signature::Signer, signature::Verifier, Signature, SigningKey, VerifyingKey},
@@ -34,8 +34,7 @@ impl Generate for P256KeyPair {
     fn from_public_key(public_key: &[u8]) -> Self {
         P256KeyPair {
             secret_key: None,
-            public_key: VerifyingKey::from_encoded_point(&EncodedPoint::from_bytes(public_key).expect("invalid key"))
-                .expect("invalid point"),
+            public_key: VerifyingKey::from_encoded_point(&EncodedPoint::from_bytes(public_key).expect("invalid key")).expect("invalid point"),
         }
     }
 
@@ -60,38 +59,23 @@ impl KeyMaterial for P256KeyPair {
     }
 
     fn private_key_bytes(&self) -> Vec<u8> {
-        self.secret_key
-            .as_ref()
-            .map_or(vec![], |x| x.to_bytes().as_slice().to_vec())
+        self.secret_key.as_ref().map_or(vec![], |x| x.to_bytes().as_slice().to_vec())
     }
 }
 
-impl Ecdsa for P256KeyPair {
-    fn sign(&self, payload: Payload) -> Vec<u8> {
-        match payload {
-            Payload::Buffer(payload) => {
-                let signature = match &self.secret_key {
-                    Some(sig) => sig.sign(&payload),
-                    None => panic!("secret key not found"),
-                };
-                signature.as_ref().to_vec()
-            }
-            _ => unimplemented!("payload type not supported for this key"),
-        }
+impl SignVerify for P256KeyPair {
+    fn sign(&self, payload: &[u8]) -> Vec<u8> {
+        let signature = match &self.secret_key {
+            Some(sig) => sig.sign(&payload),
+            None => panic!("secret key not found"),
+        };
+        signature.as_ref().to_vec()
     }
 
-    fn verify(&self, payload: Payload, signature: &[u8]) -> Result<(), Error> {
-        match payload {
-            Payload::Buffer(payload) => match self
-                .public_key
-                .verify(&payload, &Signature::try_from(signature).unwrap())
-                .is_ok()
-            {
-                true => Ok(()),
-                false => Err(Error::Unknown("invalid signature".into())),
-            },
-            _ => unimplemented!("payload type not supported for this key"),
-        }
+    fn verify(&self, payload: &[u8], signature: &[u8]) -> Result<(), Error> {
+        self.public_key
+            .verify(&payload, &Signature::try_from(signature).unwrap())
+            .map_err(|e| Error::SignatureError)
     }
 }
 
@@ -176,18 +160,18 @@ pub mod test {
     #[test]
     fn test_demo() {
         let key = P256KeyPair::new_with_seed(vec![].as_slice());
-        let message = b"super secret message".to_vec();
+        let message = b"super secret message";
 
-        let signature = key.sign(Payload::Buffer(message.clone()));
+        let signature = key.sign(message);
 
-        let is_valud = key.verify(Payload::Buffer(message), signature.as_slice());
+        let is_valud = key.verify(message, signature.as_slice());
 
         assert!(is_valud.map_or(false, |_| true));
     }
 
     #[test]
     fn did_document() {
-        let key = generate::<P256KeyPair>(None);
+        let key = P256KeyPair::new();
 
         let did_doc = key.get_did_document(Config {
             use_jose_format: false,
@@ -213,10 +197,7 @@ pub mod test {
         let keypair = P256KeyPair::from_secret_key(&sk);
         let did_doc = keypair.get_did_document(Config::default());
 
-        assert_eq!(
-            keypair.fingerprint(),
-            "zDnaerx9CtbPJ1q36T5Ln5wYt3MQYeGRG5ehnPAmxcf5mDZpv"
-        );
+        assert_eq!(keypair.fingerprint(), "zDnaerx9CtbPJ1q36T5Ln5wYt3MQYeGRG5ehnPAmxcf5mDZpv");
         assert_eq!(did_doc.id, "did:key:zDnaerx9CtbPJ1q36T5Ln5wYt3MQYeGRG5ehnPAmxcf5mDZpv");
     }
 }

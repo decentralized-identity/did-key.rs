@@ -1,10 +1,10 @@
 use crate::{
     didcore::*,
     traits::{DIDCore, Fingerprint, Generate, KeyMaterial},
-    AsymmetricKey, Error, KeyPair, Payload,
+    AsymmetricKey, Error, KeyPair,
 };
 
-use super::{generate_seed, Ecdh, Ecdsa};
+use super::{generate_seed, Ecdh, SignVerify};
 use libsecp256k1::{Message, PublicKey, SecretKey, SharedSecret, Signature};
 use sha2::{Digest, Sha256};
 
@@ -56,40 +56,26 @@ impl KeyMaterial for Secp256k1KeyPair {
     }
 }
 
-impl Ecdsa for Secp256k1KeyPair {
-    fn sign(&self, payload: Payload) -> Vec<u8> {
-        match payload {
-            Payload::Buffer(payload) => {
-                let signature = match &self.secret_key {
-                    Some(sig) => {
-                        let message = Message::parse(&get_hash(&payload));
-                        libsecp256k1::sign(&message, &sig).0
-                    }
-                    None => panic!("secret key not found"),
-                };
-                let signature = signature.serialize();
-                signature.as_ref().to_vec()
+impl SignVerify for Secp256k1KeyPair {
+    fn sign(&self, payload: &[u8]) -> Vec<u8> {
+        let signature = match &self.secret_key {
+            Some(sig) => {
+                let message = Message::parse(&get_hash(payload));
+                libsecp256k1::sign(&message, &sig).0
             }
-            _ => unimplemented!("payload type not supported for this key"),
-        }
+            None => panic!("secret key not found"),
+        };
+        let signature = signature.serialize();
+        signature.as_ref().to_vec()
     }
 
-    fn verify(&self, payload: Payload, signature: &[u8]) -> Result<(), Error> {
-        let verified;
-        match payload {
-            Payload::Buffer(payload) => {
-                let message = Message::parse(&get_hash(&payload));
-                let signature = Signature::parse_standard_slice(&signature).expect("Couldn't parse signature");
+    fn verify(&self, payload: &[u8], signature: &[u8]) -> Result<(), Error> {
+        let message = Message::parse(&get_hash(&payload));
+        let signature = Signature::parse_standard_slice(&signature).expect("Couldn't parse signature");
 
-                verified = libsecp256k1::verify(&message, &signature, &self.public_key);
-            }
-            _ => unimplemented!("payload type not supported for this key"),
-        }
-
-        if verified {
-            return Ok(());
-        } else {
-            return Err(Error::Unknown("verify failed".into()));
+        match libsecp256k1::verify(&message, &signature, &self.public_key) {
+            true => Ok(()),
+            false => Err(Error::SignatureError),
         }
     }
 }
@@ -174,7 +160,7 @@ impl From<Secp256k1KeyPair> for KeyPair {
     }
 }
 
-fn get_hash(payload: &Vec<u8>) -> [u8; 32] {
+fn get_hash(payload: &[u8]) -> [u8; 32] {
     let hash = Sha256::digest(&payload);
     let mut output = [0u8; 32];
     output.copy_from_slice(&hash[..32]);
@@ -196,14 +182,12 @@ pub mod test {
 
     #[test]
     fn sign_and_verify() {
-        let message = b"super secret message".to_vec();
-        let payload = Payload::Buffer(message.clone());
+        let message = b"super secret message";
         let key_pair = Secp256k1KeyPair::new_with_seed(vec![].as_slice());
 
-        let signature = key_pair.sign(payload);
-        let payload = Payload::Buffer(message.clone());
+        let signature = key_pair.sign(message);
 
-        let verified = match key_pair.verify(payload, &signature) {
+        let verified = match key_pair.verify(message, &signature) {
             Ok(_) => true,
             Err(_) => false,
         };
@@ -221,7 +205,7 @@ pub mod test {
 
     #[test]
     fn did_document() {
-        let key = generate::<Secp256k1KeyPair>(None);
+        let key = Secp256k1KeyPair::new();
 
         let did_doc = key.get_did_document(Config {
             use_jose_format: true,

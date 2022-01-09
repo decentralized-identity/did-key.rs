@@ -1,7 +1,7 @@
 use crate::{
     didcore::*,
     ed25519::Ed25519KeyPair,
-    traits::{DIDCore, Ecdsa, Fingerprint, Generate, KeyMaterial},
+    traits::{DIDCore, Fingerprint, Generate, KeyMaterial, SignVerify},
     AsymmetricKey, Error, KeyPair,
 };
 
@@ -70,13 +70,13 @@ impl Ecdh for X25519KeyPair {
     }
 }
 
-impl Ecdsa for X25519KeyPair {
-    fn sign(&self, _: crate::Payload) -> Vec<u8> {
-        unimplemented!("ECDSA is not supported for this key type")
+impl SignVerify for X25519KeyPair {
+    fn sign(&self, _: &[u8]) -> Vec<u8> {
+        unimplemented!("signing is not supported for this key type")
     }
 
-    fn verify(&self, _: crate::Payload, _: &[u8]) -> Result<(), Error> {
-        unimplemented!("ECDSA is not supported for this key type")
+    fn verify(&self, _: &[u8], _: &[u8]) -> Result<(), Error> {
+        unimplemented!("verifiying is not supported for this key type")
     }
 }
 

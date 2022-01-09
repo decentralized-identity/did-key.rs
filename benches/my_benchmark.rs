@@ -32,12 +32,8 @@ fn criterion_benchmark(c: &mut Criterion) {
     let payloads: Vec<Buffer> = vec![
         Buffer { data: &[0; 256] },
         Buffer { data: &[0; 1024] },
-        Buffer {
-            data: &[0; 1024 * 1024],
-        },
-        Buffer {
-            data: &[0; 1024 * 1024 * 5],
-        },
+        Buffer { data: &[0; 1024 * 1024] },
+        Buffer { data: &[0; 1024 * 1024 * 5] },
     ];
 
     let ed_key = generate::<Ed25519KeyPair>(None);
@@ -47,23 +43,17 @@ fn criterion_benchmark(c: &mut Criterion) {
     let mut group_sign = c.benchmark_group("signatures");
 
     for payload in payloads {
-        group_sign.bench_with_input(
-            BenchmarkId::new("ed sign", payload.data.len()),
-            &payload,
-            |b, &payload| b.iter(|| ed_key.sign(Payload::Buffer(payload.data.to_vec()))),
-        );
+        group_sign.bench_with_input(BenchmarkId::new("ed sign", payload.data.len()), &payload, |b, &payload| {
+            b.iter(|| ed_key.sign(Payload::Buffer(payload.data.to_vec())))
+        });
 
-        group_sign.bench_with_input(
-            BenchmarkId::new("p256 sign", payload.data.len()),
-            &payload,
-            |b, &payload| b.iter(|| p256_key.sign(Payload::Buffer(payload.data.to_vec()))),
-        );
+        group_sign.bench_with_input(BenchmarkId::new("p256 sign", payload.data.len()), &payload, |b, &payload| {
+            b.iter(|| p256_key.sign(Payload::Buffer(payload.data.to_vec())))
+        });
 
-        group_sign.bench_with_input(
-            BenchmarkId::new("bls sign", payload.data.len()),
-            &payload,
-            |b, &payload| b.iter(|| bls_key.sign(Payload::BufferArray(vec![payload.data.to_vec()]))),
-        );
+        group_sign.bench_with_input(BenchmarkId::new("bls sign", payload.data.len()), &payload, |b, &payload| {
+            b.iter(|| bls_key.sign(Payload::BufferArray(vec![payload.data.to_vec()])))
+        });
     }
 
     group_sign.finish();
