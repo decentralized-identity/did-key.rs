@@ -75,7 +75,7 @@ impl CoreSign for P256KeyPair {
     fn verify(&self, payload: &[u8], signature: &[u8]) -> Result<(), Error> {
         self.public_key
             .verify(&payload, &Signature::try_from(signature).unwrap())
-            .map_err(|e| Error::SignatureError)
+            .map_err(|_e| Error::SignatureError)
     }
 }
 
@@ -154,7 +154,7 @@ impl From<P256KeyPair> for KeyPair {
 pub mod test {
     use base64::URL_SAFE;
 
-    use crate::{generate, resolve};
+    use crate::resolve;
 
     use super::*;
     #[test]

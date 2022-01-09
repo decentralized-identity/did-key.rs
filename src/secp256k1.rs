@@ -169,8 +169,6 @@ fn get_hash(payload: &[u8]) -> [u8; 32] {
 
 #[cfg(test)]
 pub mod test {
-    use crate::generate;
-
     use super::*;
 
     //Are these tests sufficient? Or do I need more?

@@ -1,4 +1,4 @@
-use bls::{PublicKey, PublicKeyVt, SecretKey};
+use bls::{PublicKey, PublicKeyVt, SecretKey, Signature};
 use bls12_381_plus::Scalar;
 use hkdf::HkdfExtract;
 
@@ -31,11 +31,24 @@ impl Bls12381KeyPairs {
 
 impl CoreSign for Bls12381KeyPairs {
     fn sign(&self, payload: &[u8]) -> Vec<u8> {
-        unimplemented!()
+        Signature::new(&self.secret_key.as_ref().unwrap(), payload)
+            .expect("secret key not present")
+            .to_bytes()
+            .to_vec()
     }
 
     fn verify(&self, payload: &[u8], signature: &[u8]) -> Result<(), Error> {
-        unimplemented!()
+        if signature.len() != Signature::BYTES {
+            return Err(Error::SignatureError);
+        }
+
+        let mut sig = [0u8; Signature::BYTES];
+        sig.copy_from_slice(signature);
+
+        match Signature::from_bytes(&sig).unwrap().verify(self.pk_g2, payload).unwrap_u8() {
+            1 => Ok(()),
+            _ => Err(Error::SignatureError),
+        }
     }
 }
 
@@ -49,7 +62,17 @@ impl Generate for Bls12381KeyPairs {
     }
 
     fn from_public_key(_public_key: &[u8]) -> Bls12381KeyPairs {
-        unimplemented!("cannot use this construction method")
+        let mut pk_g1 = [0u8; PublicKeyVt::BYTES];
+        pk_g1.copy_from_slice(&_public_key[..PublicKeyVt::BYTES]);
+
+        let mut pk_g2 = [0u8; PublicKey::BYTES];
+        pk_g2.copy_from_slice(&_public_key[PublicKeyVt::BYTES..]);
+
+        Bls12381KeyPairs {
+            pk_g1: PublicKeyVt::from_bytes(&pk_g1).unwrap(),
+            pk_g2: PublicKey::from_bytes(&pk_g2).unwrap(),
+            secret_key: None,
+        }
     }
 
     fn from_secret_key(secret_key_bytes: &[u8]) -> Bls12381KeyPairs {
@@ -222,7 +245,17 @@ pub mod test {
 
         let signature = keypair.sign(&payload);
 
-        assert_eq!(signature.len(), SecretKey::BYTES);
+        assert_eq!(signature.len(), Signature::BYTES);
+    }
+
+    #[test]
+    fn test_public_key() {
+        let keypair = generate_keypair(None);
+
+        let from = Bls12381KeyPairs::from_public_key(&keypair.public_key_bytes());
+
+        assert!(from.pk_g1.eq(&keypair.pk_g1));
+        assert!(from.pk_g2.eq(&keypair.pk_g2));
     }
 
     #[test]
@@ -289,9 +322,9 @@ pub mod test {
 
         let resolved = crate::resolve(g2.as_str());
 
-        // let doc2 = resolved.unwrap().get_did_document(CONFIG_LD_PRIVATE);
+        let doc2 = resolved.unwrap().get_did_document(CONFIG_LD_PRIVATE);
 
-        // assert_eq!(doc.id, doc2.id)
+        assert_eq!(doc.id, doc2.id)
     }
 
     #[test]

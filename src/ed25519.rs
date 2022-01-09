@@ -200,7 +200,7 @@ impl From<Ed25519KeyPair> for KeyPair {
 
 #[cfg(test)]
 pub mod test {
-    use crate::{didcore::CONFIG_LD_PRIVATE, generate};
+    use crate::didcore::CONFIG_LD_PRIVATE;
 
     use super::*;
     #[test]
