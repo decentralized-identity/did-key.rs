@@ -1,11 +1,11 @@
 use crate::{
     didcore::*,
     ed25519::Ed25519KeyPair,
-    traits::{DIDCore, Fingerprint, Generate, KeyMaterial, SignVerify},
+    traits::{CoreSign, DIDCore, Fingerprint, Generate, KeyMaterial},
     AsymmetricKey, Error, KeyPair,
 };
 
-use super::{generate_seed, Ecdh};
+use super::{generate_seed, ECDH};
 use std::convert::TryInto;
 use x25519_dalek::{PublicKey, StaticSecret};
 
@@ -61,7 +61,7 @@ impl KeyMaterial for X25519KeyPair {
     }
 }
 
-impl Ecdh for X25519KeyPair {
+impl ECDH for X25519KeyPair {
     fn key_exchange(&self, key: &Self) -> Vec<u8> {
         match &(self.secret_key) {
             Some(x) => x.diffie_hellman(&key.public_key).as_bytes().to_vec(),
@@ -70,7 +70,7 @@ impl Ecdh for X25519KeyPair {
     }
 }
 
-impl SignVerify for X25519KeyPair {
+impl CoreSign for X25519KeyPair {
     fn sign(&self, _: &[u8]) -> Vec<u8> {
         unimplemented!("signing is not supported for this key type")
     }

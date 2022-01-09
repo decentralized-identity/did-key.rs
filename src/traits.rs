@@ -22,7 +22,7 @@ pub trait Generate: KeyMaterial {
 }
 
 /// Used for Elliptic Curve Digital Signature Algorithm
-pub trait SignVerify {
+pub trait CoreSign {
     /// Performs sign operation
     fn sign(&self, payload: &[u8]) -> Vec<u8>;
     /// Performs verify operation
@@ -30,7 +30,7 @@ pub trait SignVerify {
 }
 
 /// Used for Elliptic-curve Diffie–Hellman key exchange operations
-pub trait Ecdh {
+pub trait ECDH {
     /// Perform key exchange operation
     fn key_exchange(&self, their_public: &Self) -> Vec<u8>;
 }

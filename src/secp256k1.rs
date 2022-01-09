@@ -4,7 +4,7 @@ use crate::{
     AsymmetricKey, Error, KeyPair,
 };
 
-use super::{generate_seed, Ecdh, SignVerify};
+use super::{generate_seed, CoreSign, ECDH};
 use libsecp256k1::{Message, PublicKey, SecretKey, SharedSecret, Signature};
 use sha2::{Digest, Sha256};
 
@@ -56,7 +56,7 @@ impl KeyMaterial for Secp256k1KeyPair {
     }
 }
 
-impl SignVerify for Secp256k1KeyPair {
+impl CoreSign for Secp256k1KeyPair {
     fn sign(&self, payload: &[u8]) -> Vec<u8> {
         let signature = match &self.secret_key {
             Some(sig) => {
@@ -80,7 +80,7 @@ impl SignVerify for Secp256k1KeyPair {
     }
 }
 
-impl Ecdh for Secp256k1KeyPair {
+impl ECDH for Secp256k1KeyPair {
     fn key_exchange(&self, key: &Self) -> Vec<u8> {
         match &(self.secret_key) {
             Some(x) => SharedSecret::<Sha256>::new(&key.public_key, &x)

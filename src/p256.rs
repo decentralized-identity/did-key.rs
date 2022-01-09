@@ -1,7 +1,7 @@
-use super::{generate_seed, SignVerify};
+use super::{generate_seed, CoreSign};
 use crate::{
     didcore::{Config, KeyFormat, JWK},
-    traits::{DIDCore, Ecdh, Fingerprint, Generate, KeyMaterial},
+    traits::{DIDCore, Fingerprint, Generate, KeyMaterial, ECDH},
     AsymmetricKey, Document, Error, KeyPair, VerificationMethod,
 };
 use p256::{
@@ -63,7 +63,7 @@ impl KeyMaterial for P256KeyPair {
     }
 }
 
-impl SignVerify for P256KeyPair {
+impl CoreSign for P256KeyPair {
     fn sign(&self, payload: &[u8]) -> Vec<u8> {
         let signature = match &self.secret_key {
             Some(sig) => sig.sign(&payload),
@@ -138,7 +138,7 @@ impl Fingerprint for P256KeyPair {
     }
 }
 
-impl Ecdh for P256KeyPair {
+impl ECDH for P256KeyPair {
     fn key_exchange(&self, _: &Self) -> Vec<u8> {
         unimplemented!("ECDH not supported for this key type")
     }

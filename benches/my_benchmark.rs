@@ -8,7 +8,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     group_key.bench_function("edwards new", |b| b.iter(|| generate::<Ed25519KeyPair>(None)));
     group_key.bench_function("montgomery new", |b| b.iter(|| generate::<X25519KeyPair>(None)));
     group_key.bench_function("p256 new", |b| b.iter(|| generate::<P256KeyPair>(None)));
-    group_key.bench_function("bls new", |b| b.iter(|| generate::<Bls12381KeyPair>(None)));
+    group_key.bench_function("bls new", |b| b.iter(|| generate::<Bls12381KeyPairs>(None)));
 
     group_key.finish();
 
@@ -37,22 +37,22 @@ fn criterion_benchmark(c: &mut Criterion) {
     ];
 
     let ed_key = generate::<Ed25519KeyPair>(None);
-    let bls_key = generate::<Bls12381KeyPair>(None);
+    let bls_key = generate::<Bls12381KeyPairs>(None);
     let p256_key = generate::<P256KeyPair>(None);
 
     let mut group_sign = c.benchmark_group("signatures");
 
     for payload in payloads {
         group_sign.bench_with_input(BenchmarkId::new("ed sign", payload.data.len()), &payload, |b, &payload| {
-            b.iter(|| ed_key.sign(Payload::Buffer(payload.data.to_vec())))
+            b.iter(|| ed_key.sign(payload.data))
         });
 
         group_sign.bench_with_input(BenchmarkId::new("p256 sign", payload.data.len()), &payload, |b, &payload| {
-            b.iter(|| p256_key.sign(Payload::Buffer(payload.data.to_vec())))
+            b.iter(|| p256_key.sign(payload.data))
         });
 
         group_sign.bench_with_input(BenchmarkId::new("bls sign", payload.data.len()), &payload, |b, &payload| {
-            b.iter(|| bls_key.sign(Payload::BufferArray(vec![payload.data.to_vec()])))
+            b.iter(|| bls_key.sign(payload.data))
         });
     }
 

@@ -11,7 +11,7 @@ pub enum KeyPair {
     Ed25519(Ed25519KeyPair),
     X25519(X25519KeyPair),
     P256(P256KeyPair),
-    Bls12381G1G2(Bls12381KeyPair),
+    Bls12381G1G2(Bls12381KeyPairs),
     Secp256k1(Secp256k1KeyPair),
 }
 
@@ -31,7 +31,7 @@ pub enum Error {
 pub type DIDKey = KeyPair;
 
 /// Generate new `did:key` of the specified type
-pub fn generate<T: Generate + SignVerify + Ecdh + DIDCore + Fingerprint + Into<KeyPair>>(seed: Option<&[u8]>) -> KeyPair {
+pub fn generate<T: Generate + CoreSign + ECDH + DIDCore + Fingerprint + Into<KeyPair>>(seed: Option<&[u8]>) -> KeyPair {
     T::new_with_seed(seed.map_or(vec![].as_slice(), |x| x)).into()
 }
 
@@ -41,7 +41,7 @@ pub fn resolve(did_uri: &str) -> Result<KeyPair, Error> {
 }
 
 /// Generate key pair from existing key material
-pub fn from_existing_key<T: Generate + SignVerify + Ecdh + DIDCore + Fingerprint + Into<KeyPair>>(
+pub fn from_existing_key<T: Generate + CoreSign + ECDH + DIDCore + Fingerprint + Into<KeyPair>>(
     public_key: &[u8],
     private_key: Option<&[u8]>,
 ) -> KeyPair {
@@ -63,6 +63,94 @@ pub(crate) fn generate_seed(initial_seed: &[u8]) -> Result<[u8; 32], &str> {
         };
     }
     Ok(seed)
+}
+
+impl CoreSign for KeyPair {
+    fn sign(&self, payload: &[u8]) -> Vec<u8> {
+        match self {
+            KeyPair::Ed25519(x) => x.sign(payload),
+            KeyPair::X25519(x) => x.sign(payload),
+            KeyPair::P256(x) => x.sign(payload),
+            KeyPair::Bls12381G1G2(x) => x.sign(payload),
+            KeyPair::Secp256k1(x) => x.sign(payload),
+        }
+    }
+
+    fn verify(&self, payload: &[u8], signature: &[u8]) -> Result<(), Error> {
+        match self {
+            KeyPair::Ed25519(x) => x.verify(payload, signature),
+            KeyPair::X25519(x) => x.verify(payload, signature),
+            KeyPair::P256(x) => x.verify(payload, signature),
+            KeyPair::Bls12381G1G2(x) => x.verify(payload, signature),
+            KeyPair::Secp256k1(x) => x.verify(payload, signature),
+        }
+    }
+}
+
+impl ECDH for KeyPair {
+    fn key_exchange(&self, their_public: &Self) -> Vec<u8> {
+        match (self, their_public) {
+            (KeyPair::X25519(me), KeyPair::X25519(them)) => me.key_exchange(them),
+            (KeyPair::P256(me), KeyPair::P256(them)) => me.key_exchange(them),
+            _ => unimplemented!("ECDH not supported for this key combination"),
+        }
+    }
+}
+
+impl DIDCore for KeyPair {
+    fn get_verification_methods(&self, config: didcore::Config, controller: &str) -> Vec<VerificationMethod> {
+        match self {
+            KeyPair::Ed25519(x) => x.get_verification_methods(config, controller),
+            KeyPair::X25519(x) => x.get_verification_methods(config, controller),
+            KeyPair::P256(x) => x.get_verification_methods(config, controller),
+            KeyPair::Bls12381G1G2(x) => x.get_verification_methods(config, controller),
+            KeyPair::Secp256k1(x) => x.get_verification_methods(config, controller),
+        }
+    }
+
+    fn get_did_document(&self, config: didcore::Config) -> Document {
+        match self {
+            KeyPair::Ed25519(x) => x.get_did_document(config),
+            KeyPair::X25519(x) => x.get_did_document(config),
+            KeyPair::P256(x) => x.get_did_document(config),
+            KeyPair::Bls12381G1G2(x) => x.get_did_document(config),
+            KeyPair::Secp256k1(x) => x.get_did_document(config),
+        }
+    }
+}
+
+impl KeyMaterial for KeyPair {
+    fn public_key_bytes(&self) -> Vec<u8> {
+        match self {
+            KeyPair::Ed25519(x) => x.public_key_bytes(),
+            KeyPair::X25519(x) => x.public_key_bytes(),
+            KeyPair::P256(x) => x.public_key_bytes(),
+            KeyPair::Bls12381G1G2(x) => x.public_key_bytes(),
+            KeyPair::Secp256k1(x) => x.public_key_bytes(),
+        }
+    }
+
+    fn private_key_bytes(&self) -> Vec<u8> {
+        match self {
+            KeyPair::Ed25519(x) => x.private_key_bytes(),
+            KeyPair::X25519(x) => x.private_key_bytes(),
+            KeyPair::P256(x) => x.private_key_bytes(),
+            KeyPair::Bls12381G1G2(x) => x.private_key_bytes(),
+            KeyPair::Secp256k1(x) => x.private_key_bytes(),
+        }
+    }
+}
+
+impl Fingerprint for KeyPair {
+    fn fingerprint(&self) -> String {
+        match self {
+            KeyPair::Ed25519(x) => x.fingerprint(),
+            KeyPair::X25519(x) => x.fingerprint(),
+            KeyPair::P256(x) => x.fingerprint(),
+            KeyPair::Bls12381G1G2(x) => x.fingerprint(),
+            KeyPair::Secp256k1(x) => x.fingerprint(),
+        }
+    }
 }
 
 impl TryFrom<&str> for KeyPair {
@@ -87,7 +175,7 @@ impl TryFrom<&str> for KeyPair {
         return Ok(match pub_key[0..2] {
             [0xed, 0x1] => KeyPair::Ed25519(Ed25519KeyPair::from_public_key(&pub_key[2..])),
             [0xec, 0x1] => KeyPair::X25519(X25519KeyPair::from_public_key(&pub_key[2..])),
-            [0xee, 0x1] => KeyPair::Bls12381G1G2(Bls12381KeyPair::from_public_key(&pub_key[2..])),
+            [0xee, 0x1] => KeyPair::Bls12381G1G2(Bls12381KeyPairs::from_public_key(&pub_key[2..])),
             [0x80, 0x24] => KeyPair::P256(P256KeyPair::from_public_key(&pub_key[2..])),
             [0xe7, 0x0] => KeyPair::Secp256k1(Secp256k1KeyPair::from_public_key(&pub_key[2..])),
             _ => unimplemented!("unsupported key type"),
@@ -141,10 +229,10 @@ mod x25519;
 pub use {
     crate::p256::P256KeyPair,
     crate::secp256k1::Secp256k1KeyPair,
-    bls12381::Bls12381KeyPair,
+    bls12381::Bls12381KeyPairs,
     didcore::{Config, Document, KeyFormat, VerificationMethod, CONFIG_JOSE_PRIVATE, CONFIG_JOSE_PUBLIC, CONFIG_LD_PRIVATE, CONFIG_LD_PUBLIC, JWK},
     ed25519::Ed25519KeyPair,
-    traits::{DIDCore, Ecdh, Fingerprint, Generate, KeyMaterial, SignVerify},
+    traits::{CoreSign, DIDCore, Fingerprint, Generate, KeyMaterial, ECDH},
     x25519::X25519KeyPair,
 };
 
@@ -195,7 +283,7 @@ pub mod test {
 
     #[test]
     fn test_did_doc_json_bls() {
-        let key = generate::<Bls12381KeyPair>(None);
+        let key = generate::<Bls12381KeyPairs>(None);
         let did_doc = key.get_did_document(CONFIG_JOSE_PUBLIC);
 
         let json = serde_json::to_string_pretty(&did_doc).unwrap();

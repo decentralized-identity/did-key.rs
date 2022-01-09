@@ -1,7 +1,7 @@
-use super::{generate_seed, SignVerify};
+use super::{generate_seed, CoreSign};
 use crate::{
     didcore::{Config, Document, KeyFormat, VerificationMethod, JWK},
-    traits::{DIDCore, Ecdh, Fingerprint, Generate},
+    traits::{DIDCore, Fingerprint, Generate, ECDH},
     x25519::X25519KeyPair,
     AsymmetricKey, Error, KeyMaterial, KeyPair,
 };
@@ -166,7 +166,7 @@ impl KeyMaterial for Ed25519KeyPair {
     }
 }
 
-impl SignVerify for Ed25519KeyPair {
+impl CoreSign for Ed25519KeyPair {
     fn sign(&self, payload: &[u8]) -> Vec<u8> {
         let esk: ExpandedSecretKey = match &self.secret_key {
             Some(x) => x,
@@ -186,7 +186,7 @@ impl SignVerify for Ed25519KeyPair {
     }
 }
 
-impl Ecdh for Ed25519KeyPair {
+impl ECDH for Ed25519KeyPair {
     fn key_exchange(&self, _: &Self) -> Vec<u8> {
         unimplemented!("ECDH is not supported for this key type")
     }
