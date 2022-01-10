@@ -1,6 +1,6 @@
-use bls::{PublicKey, PublicKeyVt, SecretKey, Signature};
 use bls12_381_plus::Scalar;
 use hkdf::HkdfExtract;
+use signature_bls::{PublicKey, PublicKeyVt, SecretKey, Signature};
 
 use crate::{
     didcore::{Config, KeyFormat, JWK},
@@ -229,7 +229,9 @@ fn gen_sk(ikm: &[u8]) -> Option<SecretKey> {
     if let Err(_) = h.expand(&INFO, &mut output) {
         None
     } else {
-        Some(SecretKey(Scalar::from_okm(&output)))
+        let mut bytes = Scalar::from_okm(&output).to_bytes();
+        bytes.reverse();
+        Some(SecretKey::from_bytes(&bytes).unwrap())
     }
 }
 
