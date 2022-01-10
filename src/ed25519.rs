@@ -1,9 +1,9 @@
-use super::{generate_seed, Ecdsa};
+use super::{generate_seed, CoreSign};
 use crate::{
     didcore::{Config, Document, KeyFormat, VerificationMethod, JWK},
-    traits::{DIDCore, Ecdh, Fingerprint, Generate},
+    traits::{DIDCore, Fingerprint, Generate, ECDH},
     x25519::X25519KeyPair,
-    AsymmetricKey, Error, KeyMaterial, KeyPair, Payload,
+    AsymmetricKey, Error, KeyMaterial, KeyPair,
 };
 use curve25519_dalek::edwards::CompressedEdwardsY;
 use ed25519_dalek::*;
@@ -98,11 +98,7 @@ impl DIDCore for Ed25519KeyPair {
                     }),
                 }),
             },
-            self.get_x25519()
-                .get_verification_methods(config, controller)
-                .first()
-                .unwrap()
-                .to_owned(),
+            self.get_x25519().get_verification_methods(config, controller).first().unwrap().to_owned(),
         ]
     }
 
@@ -170,33 +166,27 @@ impl KeyMaterial for Ed25519KeyPair {
     }
 }
 
-impl Ecdsa for Ed25519KeyPair {
-    fn sign(&self, payload: Payload) -> Vec<u8> {
+impl CoreSign for Ed25519KeyPair {
+    fn sign(&self, payload: &[u8]) -> Vec<u8> {
         let esk: ExpandedSecretKey = match &self.secret_key {
             Some(x) => x,
             None => panic!("secret key not found"),
         }
         .into();
 
-        match payload {
-            Payload::Buffer(payload) => esk.sign(payload.as_slice(), &self.public_key).to_bytes().to_vec(),
-            Payload::BufferArray(_) => unimplemented!("payload type not supported for this key"),
-        }
+        esk.sign(payload, &self.public_key).to_bytes().to_vec()
     }
 
-    fn verify(&self, payload: Payload, signature: &[u8]) -> Result<(), Error> {
+    fn verify(&self, payload: &[u8], signature: &[u8]) -> Result<(), Error> {
         let sig = Signature::try_from(signature).expect("invalid signature data");
-        match payload {
-            Payload::Buffer(payload) => match self.public_key.verify(payload.as_slice(), &sig) {
-                Ok(_) => Ok(()),
-                _ => Err(Error::Unknown("verify failed".into())),
-            },
-            _ => unimplemented!("payload type not supported for this key"),
+        match self.public_key.verify(payload, &sig) {
+            Ok(_) => Ok(()),
+            _ => Err(Error::Unknown("verify failed".into())),
         }
     }
 }
 
-impl Ecdh for Ed25519KeyPair {
+impl ECDH for Ed25519KeyPair {
     fn key_exchange(&self, _: &Self) -> Vec<u8> {
         unimplemented!("ECDH is not supported for this key type")
     }
@@ -210,7 +200,7 @@ impl From<Ed25519KeyPair> for KeyPair {
 
 #[cfg(test)]
 pub mod test {
-    use crate::{didcore::CONFIG_LD_PRIVATE, generate, Payload};
+    use crate::didcore::CONFIG_LD_PRIVATE;
 
     use super::*;
     #[test]
@@ -219,12 +209,12 @@ pub mod test {
         let public_key = "6fioC1zcDPyPEL19pXRS2E4iJ46zH7xP6uSgAaPdwDrx";
 
         let sk = Ed25519KeyPair::from_seed(bs58::decode(secret_key).into_vec().unwrap().as_slice());
-        let message = b"super secret message".to_vec();
+        let message = b"super secret message";
 
-        let signature = sk.sign(Payload::Buffer(message.clone()));
+        let signature = sk.sign(message);
 
         let pk = Ed25519KeyPair::from_public_key(bs58::decode(public_key).into_vec().unwrap().as_slice());
-        let is_valud = pk.verify(Payload::Buffer(message), signature.as_slice());
+        let is_valud = pk.verify(message, signature.as_slice());
 
         assert!(is_valud.map_or(false, |_| true));
     }
@@ -234,13 +224,13 @@ pub mod test {
         let secret_key = "6Lx39RyWn3syuozAe2WiPdAYn1ctMx17t8yrBMGFBmZy";
         let public_key = "6fioC1zcDPyPEL19pXRS2E4iJ46zH7xP6uSgAaPdwDrx";
 
-        let sk = generate::<Ed25519KeyPair>(Some(bs58::decode(secret_key).into_vec().unwrap().as_slice()));
+        let sk = Ed25519KeyPair::new_with_seed(bs58::decode(secret_key).into_vec().unwrap().as_slice());
         let message = b"super secret message";
 
-        let signature = sk.sign(Payload::Buffer(message.to_vec()));
+        let signature = sk.sign(message);
 
         let pk = Ed25519KeyPair::from_public_key(bs58::decode(public_key).into_vec().unwrap().as_slice());
-        let is_valud = pk.verify(Payload::Buffer(message.to_vec()), &signature).unwrap();
+        let is_valud = pk.verify(message, &signature).unwrap();
 
         matches!(is_valud, ());
     }

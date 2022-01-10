@@ -11,18 +11,13 @@ pub enum KeyPair {
     Ed25519(Ed25519KeyPair),
     X25519(X25519KeyPair),
     P256(P256KeyPair),
-    Bls12381G1G2(Bls12381KeyPair),
+    Bls12381G1G2(Bls12381KeyPairs),
     Secp256k1(Secp256k1KeyPair),
 }
 
 pub struct AsymmetricKey<P, S> {
     public_key: P,
     secret_key: Option<S>,
-}
-
-pub enum Payload {
-    Buffer(Vec<u8>),
-    BufferArray(Vec<Vec<u8>>),
 }
 
 #[derive(Debug)]
@@ -36,7 +31,7 @@ pub enum Error {
 pub type DIDKey = KeyPair;
 
 /// Generate new `did:key` of the specified type
-pub fn generate<T: Generate + Ecdsa + Ecdh + DIDCore + Fingerprint + Into<KeyPair>>(seed: Option<&[u8]>) -> KeyPair {
+pub fn generate<T: Generate + CoreSign + ECDH + DIDCore + Fingerprint + Into<KeyPair>>(seed: Option<&[u8]>) -> KeyPair {
     T::new_with_seed(seed.map_or(vec![].as_slice(), |x| x)).into()
 }
 
@@ -46,7 +41,7 @@ pub fn resolve(did_uri: &str) -> Result<KeyPair, Error> {
 }
 
 /// Generate key pair from existing key material
-pub fn from_existing_key<T: Generate + Ecdsa + Ecdh + DIDCore + Fingerprint + Into<KeyPair>>(
+pub fn from_existing_key<T: Generate + CoreSign + ECDH + DIDCore + Fingerprint + Into<KeyPair>>(
     public_key: &[u8],
     private_key: Option<&[u8]>,
 ) -> KeyPair {
@@ -57,8 +52,21 @@ pub fn from_existing_key<T: Generate + Ecdsa + Ecdh + DIDCore + Fingerprint + In
     }
 }
 
-impl Ecdsa for KeyPair {
-    fn sign(&self, payload: Payload) -> Vec<u8> {
+pub(crate) fn generate_seed(initial_seed: &[u8]) -> Result<[u8; 32], &str> {
+    let mut seed = [0u8; 32];
+    if initial_seed.is_empty() || initial_seed.len() != 32 {
+        getrandom::getrandom(&mut seed).expect("couldn't generate random seed");
+    } else {
+        seed = match initial_seed.try_into() {
+            Ok(x) => x,
+            Err(_) => return Err("invalid seed size"),
+        };
+    }
+    Ok(seed)
+}
+
+impl CoreSign for KeyPair {
+    fn sign(&self, payload: &[u8]) -> Vec<u8> {
         match self {
             KeyPair::Ed25519(x) => x.sign(payload),
             KeyPair::X25519(x) => x.sign(payload),
@@ -68,7 +76,7 @@ impl Ecdsa for KeyPair {
         }
     }
 
-    fn verify(&self, payload: Payload, signature: &[u8]) -> Result<(), Error> {
+    fn verify(&self, payload: &[u8], signature: &[u8]) -> Result<(), Error> {
         match self {
             KeyPair::Ed25519(x) => x.verify(payload, signature),
             KeyPair::X25519(x) => x.verify(payload, signature),
@@ -79,7 +87,7 @@ impl Ecdsa for KeyPair {
     }
 }
 
-impl Ecdh for KeyPair {
+impl ECDH for KeyPair {
     fn key_exchange(&self, their_public: &Self) -> Vec<u8> {
         match (self, their_public) {
             (KeyPair::X25519(me), KeyPair::X25519(them)) => me.key_exchange(them),
@@ -145,19 +153,6 @@ impl Fingerprint for KeyPair {
     }
 }
 
-pub(crate) fn generate_seed(initial_seed: &[u8]) -> Result<[u8; 32], &str> {
-    let mut seed = [0u8; 32];
-    if initial_seed.is_empty() || initial_seed.len() != 32 {
-        getrandom::getrandom(&mut seed).expect("couldn't generate random seed");
-    } else {
-        seed = match initial_seed.try_into() {
-            Ok(x) => x,
-            Err(_) => return Err("invalid seed size"),
-        };
-    }
-    Ok(seed)
-}
-
 impl TryFrom<&str> for KeyPair {
     type Error = Error;
 
@@ -180,7 +175,7 @@ impl TryFrom<&str> for KeyPair {
         return Ok(match pub_key[0..2] {
             [0xed, 0x1] => KeyPair::Ed25519(Ed25519KeyPair::from_public_key(&pub_key[2..])),
             [0xec, 0x1] => KeyPair::X25519(X25519KeyPair::from_public_key(&pub_key[2..])),
-            [0xee, 0x1] => KeyPair::Bls12381G1G2(Bls12381KeyPair::from_public_key(&pub_key[2..])),
+            [0xee, 0x1] => KeyPair::Bls12381G1G2(Bls12381KeyPairs::from_public_key(&pub_key[2..])),
             [0x80, 0x24] => KeyPair::P256(P256KeyPair::from_public_key(&pub_key[2..])),
             [0xe7, 0x0] => KeyPair::Secp256k1(Secp256k1KeyPair::from_public_key(&pub_key[2..])),
             _ => unimplemented!("unsupported key type"),
@@ -206,53 +201,21 @@ impl From<&KeyFormat> for KeyPair {
             KeyFormat::JWK(jwk) => match jwk.curve.as_str() {
                 "Ed25519" => {
                     if jwk.d.is_some() {
-                        Ed25519KeyPair::from_secret_key(
-                            base64::decode_config(jwk.d.as_ref().unwrap(), URL_SAFE)
-                                .unwrap()
-                                .as_slice(),
-                        )
-                        .into()
+                        Ed25519KeyPair::from_secret_key(base64::decode_config(jwk.d.as_ref().unwrap(), URL_SAFE).unwrap().as_slice()).into()
                     } else {
-                        Ed25519KeyPair::from_public_key(
-                            base64::decode_config(jwk.x.as_ref().unwrap(), URL_SAFE)
-                                .unwrap()
-                                .as_slice(),
-                        )
-                        .into()
+                        Ed25519KeyPair::from_public_key(base64::decode_config(jwk.x.as_ref().unwrap(), URL_SAFE).unwrap().as_slice()).into()
                     }
                 }
                 "X25519" => {
                     if jwk.d.is_some() {
-                        X25519KeyPair::from_secret_key(
-                            base64::decode_config(jwk.d.as_ref().unwrap(), URL_SAFE)
-                                .unwrap()
-                                .as_slice(),
-                        )
-                        .into()
+                        X25519KeyPair::from_secret_key(base64::decode_config(jwk.d.as_ref().unwrap(), URL_SAFE).unwrap().as_slice()).into()
                     } else {
-                        X25519KeyPair::from_public_key(
-                            base64::decode_config(jwk.x.as_ref().unwrap(), URL_SAFE)
-                                .unwrap()
-                                .as_slice(),
-                        )
-                        .into()
+                        X25519KeyPair::from_public_key(base64::decode_config(jwk.x.as_ref().unwrap(), URL_SAFE).unwrap().as_slice()).into()
                     }
                 }
                 _ => unimplemented!("method not supported"),
             },
         }
-    }
-}
-
-impl From<&[u8]> for Payload {
-    fn from(data: &[u8]) -> Self {
-        Payload::Buffer(data.to_vec())
-    }
-}
-
-impl From<Vec<u8>> for Payload {
-    fn from(data: Vec<u8>) -> Self {
-        Payload::Buffer(data)
     }
 }
 
@@ -266,19 +229,16 @@ mod x25519;
 pub use {
     crate::p256::P256KeyPair,
     crate::secp256k1::Secp256k1KeyPair,
-    bls12381::Bls12381KeyPair,
-    didcore::{
-        Config, Document, KeyFormat, VerificationMethod, CONFIG_JOSE_PRIVATE, CONFIG_JOSE_PUBLIC, CONFIG_LD_PRIVATE,
-        CONFIG_LD_PUBLIC, JWK,
-    },
+    bls12381::Bls12381KeyPairs,
+    didcore::{Config, Document, KeyFormat, VerificationMethod, CONFIG_JOSE_PRIVATE, CONFIG_JOSE_PUBLIC, CONFIG_LD_PRIVATE, CONFIG_LD_PUBLIC, JWK},
     ed25519::Ed25519KeyPair,
-    traits::{DIDCore, Ecdh, Ecdsa, Fingerprint, Generate, KeyMaterial},
+    traits::{CoreSign, DIDCore, Fingerprint, Generate, KeyMaterial, ECDH},
     x25519::X25519KeyPair,
 };
 
 #[cfg(test)]
 pub mod test {
-    use crate::{didcore::Config, KeyPair, Payload};
+    use crate::{didcore::Config, KeyPair};
 
     use super::*;
     #[test]
@@ -289,10 +249,10 @@ pub mod test {
         let sk = Ed25519KeyPair::from_seed(bs58::decode(secret_key).into_vec().unwrap().as_slice());
         let message = b"super secret message";
 
-        let signature = sk.sign(Payload::Buffer(message.to_vec()));
+        let signature = sk.sign(message);
 
         let pk = Ed25519KeyPair::from_public_key(bs58::decode(public_key).into_vec().unwrap().as_slice());
-        let is_valid = pk.verify(Payload::Buffer(message.to_vec()), &signature).unwrap();
+        let is_valid = pk.verify(message, &signature).unwrap();
 
         matches!(is_valid, ());
     }
@@ -323,7 +283,7 @@ pub mod test {
 
     #[test]
     fn test_did_doc_json_bls() {
-        let key = generate::<Bls12381KeyPair>(None);
+        let key = generate::<Bls12381KeyPairs>(None);
         let did_doc = key.get_did_document(CONFIG_JOSE_PUBLIC);
 
         let json = serde_json::to_string_pretty(&did_doc).unwrap();
@@ -345,8 +305,7 @@ pub mod test {
 
     #[test]
     fn test_key_from_uri_fragment() {
-        let uri =
-            "did:key:z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL#z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL";
+        let uri = "did:key:z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL#z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL";
 
         let key = resolve(uri);
 
@@ -355,8 +314,7 @@ pub mod test {
 
     #[test]
     fn test_key_from_uri_fragment_x25519() {
-        let uri =
-            "did:key:z6Mkt6QT8FPajKXDrtMefkjxRQENd9wFzKkDFomdQAVFzpzm#z6LSfDq6DuofPeZUqNEmdZsxpvfHvSoUXGEWFhw7JHk4cynN";
+        let uri = "did:key:z6Mkt6QT8FPajKXDrtMefkjxRQENd9wFzKkDFomdQAVFzpzm#z6LSfDq6DuofPeZUqNEmdZsxpvfHvSoUXGEWFhw7JHk4cynN";
 
         let key = resolve(uri).unwrap();
 
@@ -371,8 +329,8 @@ pub mod test {
 
         println!("{}", key.fingerprint());
 
-        let signature = key.sign(Payload::Buffer(message.to_vec()));
-        let valid = key.verify(Payload::Buffer(message.to_vec()), &signature);
+        let signature = key.sign(message);
+        let valid = key.verify(message, &signature);
 
         matches!(valid, Ok(()));
     }
@@ -394,9 +352,6 @@ pub mod test {
         assert!(matches!(actual, KeyPair::Ed25519(_)));
         assert_eq!(actual.fingerprint(), expected.fingerprint());
 
-        assert_eq!(
-            expected.get_did_document(Config::default()),
-            actual.get_did_document(Config::default())
-        );
+        assert_eq!(expected.get_did_document(Config::default()), actual.get_did_document(Config::default()));
     }
 }
