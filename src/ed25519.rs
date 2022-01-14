@@ -178,7 +178,7 @@ impl CoreSign for Ed25519KeyPair {
     }
 
     fn verify(&self, payload: &[u8], signature: &[u8]) -> Result<(), Error> {
-        let sig = Signature::try_from(signature).expect("invalid signature data");
+        let sig = Signature::try_from(signature)?;
         match self.public_key.verify(payload, &sig) {
             Ok(_) => Ok(()),
             _ => Err(Error::Unknown("verify failed".into())),
@@ -195,6 +195,12 @@ impl ECDH for Ed25519KeyPair {
 impl From<Ed25519KeyPair> for KeyPair {
     fn from(key_pair: Ed25519KeyPair) -> Self {
         KeyPair::Ed25519(key_pair)
+    }
+}
+
+impl From<ed25519_dalek::ed25519::Error> for Error {
+    fn from(_: ed25519_dalek::ed25519::Error) -> Self {
+        Self::SignatureError
     }
 }
 

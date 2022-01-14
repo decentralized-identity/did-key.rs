@@ -71,7 +71,7 @@ impl CoreSign for Secp256k1KeyPair {
 
     fn verify(&self, payload: &[u8], signature: &[u8]) -> Result<(), Error> {
         let message = Message::parse(&get_hash(&payload));
-        let signature = Signature::parse_standard_slice(&signature).expect("Couldn't parse signature");
+        let signature = Signature::parse_standard_slice(&signature)?;
 
         match libsecp256k1::verify(&message, &signature, &self.public_key) {
             true => Ok(()),
@@ -157,6 +157,17 @@ impl Fingerprint for Secp256k1KeyPair {
 impl From<Secp256k1KeyPair> for KeyPair {
     fn from(key_pair: Secp256k1KeyPair) -> Self {
         KeyPair::Secp256k1(key_pair)
+    }
+}
+
+impl From<libsecp256k1::Error> for Error {
+    fn from(err: libsecp256k1::Error) -> Self {
+        match err {
+            libsecp256k1::Error::InvalidSignature => Self::SignatureError,
+            libsecp256k1::Error::InvalidPublicKey => Self::InvalidKey,
+            libsecp256k1::Error::InvalidSecretKey => Self::InvalidKey,
+            _ => Self::Unknown(format!("{}", err)),
+        }
     }
 }
 
