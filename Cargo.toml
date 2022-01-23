@@ -35,6 +35,7 @@ features = ["ecdsa", "ecdh"]
 
 [dev-dependencies]
 criterion = "0.3"
+fluid = "0.4"
 
 [[bench]]
 name = "my_benchmark"

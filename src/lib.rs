@@ -172,14 +172,14 @@ impl TryFrom<&str> for KeyPair {
             None => return Err(Error::Unknown("invalid URI data".into())),
         };
 
-        return Ok(match pub_key[0..2] {
-            [0xed, 0x1] => KeyPair::Ed25519(Ed25519KeyPair::from_public_key(&pub_key[2..])),
-            [0xec, 0x1] => KeyPair::X25519(X25519KeyPair::from_public_key(&pub_key[2..])),
-            [0xee, 0x1] => KeyPair::Bls12381G1G2(Bls12381KeyPairs::from_public_key(&pub_key[2..])),
-            [0x80, 0x24] => KeyPair::P256(P256KeyPair::from_public_key(&pub_key[2..])),
-            [0xe7, 0x0] => KeyPair::Secp256k1(Secp256k1KeyPair::from_public_key(&pub_key[2..])),
-            _ => unimplemented!("unsupported key type"),
-        });
+        return match pub_key[0..2] {
+            [0xed, 0x1] => Ok(KeyPair::Ed25519(Ed25519KeyPair::from_public_key(&pub_key[2..]))),
+            [0xec, 0x1] => Ok(KeyPair::X25519(X25519KeyPair::from_public_key(&pub_key[2..]))),
+            [0xee, 0x1] => Ok(KeyPair::Bls12381G1G2(Bls12381KeyPairs::from_public_key(&pub_key[2..]))),
+            [0x80, 0x24] => Ok(KeyPair::P256(P256KeyPair::from_public_key(&pub_key[2..]))),
+            [0xe7, 0x1] => Ok(KeyPair::Secp256k1(Secp256k1KeyPair::from_public_key(&pub_key[2..]))),
+            _ => Err(Error::ResolutionFailed),
+        };
     }
 }
 
@@ -238,9 +238,10 @@ pub use {
 
 #[cfg(test)]
 pub mod test {
-    use crate::{didcore::Config, KeyPair};
-
     use super::*;
+    use crate::{didcore::Config, KeyPair};
+    use fluid::prelude::*;
+
     #[test]
     fn test_demo() {
         let secret_key = "6Lx39RyWn3syuozAe2WiPdAYn1ctMx17t8yrBMGFBmZy";
@@ -340,6 +341,16 @@ pub mod test {
         let key = resolve("did:key:z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL").unwrap();
 
         assert!(matches!(key, KeyPair::Ed25519(_)));
+    }
+
+    #[theory]
+    #[case("did:key:zQ3shokFTS3brHcDQrn82RUDfCZESWL1ZdCEJwekUDPQiYBme")]
+    #[case("did:key:zQ3shtxV1FrJfhqE1dvxYRcCknWNjHc3c5X1y3ZSoPDi2aur2")]
+    #[case("did:key:zQ3shZc2QzApp2oymGvQbzP8eKheVshBHbU4ZYjeXqwSKEn6N")]
+    fn test_resolve_secp256k1(did_uri: &str) {
+        let key = resolve(did_uri).unwrap();
+
+        assert!(matches!(key, KeyPair::Secp256k1(_)));
     }
 
     #[test]
