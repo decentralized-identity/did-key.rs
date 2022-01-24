@@ -1,6 +1,6 @@
 [package]
 name = "did-key"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Tomislav Markovski <tomislav@trinsic.id>"]
 edition = "2018"
 license = "Apache-2.0"
@@ -35,6 +35,7 @@ features = ["ecdsa", "ecdh"]
 
 [dev-dependencies]
 criterion = "0.3"
+fluid = "0.4"
 
 [[bench]]
 name = "my_benchmark"
