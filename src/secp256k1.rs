@@ -1,7 +1,7 @@
 use crate::{
     didcore::*,
     traits::{DIDCore, Fingerprint, Generate, KeyMaterial},
-    AsymmetricKey, Error, KeyPair,
+    AsymmetricKey, Error, BaseKeyPair,
 };
 
 use super::{generate_seed, CoreSign, ECDH};
@@ -154,9 +154,9 @@ impl Fingerprint for Secp256k1KeyPair {
     }
 }
 
-impl From<Secp256k1KeyPair> for KeyPair {
+impl From<Secp256k1KeyPair> for BaseKeyPair {
     fn from(key_pair: Secp256k1KeyPair) -> Self {
-        KeyPair::Secp256k1(key_pair)
+        BaseKeyPair::Secp256k1(key_pair)
     }
 }
 

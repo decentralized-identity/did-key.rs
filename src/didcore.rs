@@ -23,7 +23,7 @@ pub const CONFIG_LD_PRIVATE: Config = Config {
     serialize_secrets: true,
 };
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Document {
     #[serde(rename = "@context")]
@@ -40,6 +40,12 @@ pub struct Document {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key_agreement: Option<Vec<String>>,
     pub verification_method: Vec<VerificationMethod>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct IetfJsonPatch {
+    #[serde(rename = "ietf-json-patch")]
+    pub value: serde_json::Value,
 }
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Default)]
@@ -72,6 +78,21 @@ pub struct JWK {
     pub y: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub d: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
+pub struct JWSHeader {
+    #[serde(rename = "alg")]
+    pub algorithm: String,
+    #[serde(rename = "kid", default, skip_serializing_if = "Option::is_none")]
+    pub key_id: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
+pub struct JWS {
+    pub header: JWSHeader,
+    pub payload: Vec<u8>,
+    pub signature: Vec<u8>,
 }
 
 impl Serialize for VerificationMethod {

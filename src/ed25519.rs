@@ -3,7 +3,7 @@ use crate::{
     didcore::{Config, Document, KeyFormat, VerificationMethod, JWK},
     traits::{DIDCore, Fingerprint, Generate, ECDH},
     x25519::X25519KeyPair,
-    AsymmetricKey, Error, KeyMaterial, KeyPair,
+    AsymmetricKey, Error, KeyMaterial, BaseKeyPair,
 };
 use curve25519_dalek::edwards::CompressedEdwardsY;
 use ed25519_dalek::*;
@@ -192,9 +192,9 @@ impl ECDH for Ed25519KeyPair {
     }
 }
 
-impl From<Ed25519KeyPair> for KeyPair {
+impl From<Ed25519KeyPair> for BaseKeyPair {
     fn from(key_pair: Ed25519KeyPair) -> Self {
-        KeyPair::Ed25519(key_pair)
+        BaseKeyPair::Ed25519(key_pair)
     }
 }
 

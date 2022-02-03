@@ -6,7 +6,7 @@ use crate::{
     didcore::{Config, KeyFormat, JWK},
     generate_seed,
     traits::{CoreSign, DIDCore, Fingerprint, Generate, ECDH},
-    Document, Error, KeyMaterial, KeyPair, VerificationMethod,
+    Document, Error, KeyMaterial, BaseKeyPair, VerificationMethod,
 };
 
 pub struct Bls12381KeyPairs {
@@ -196,9 +196,9 @@ impl ECDH for Bls12381KeyPairs {
     }
 }
 
-impl From<Bls12381KeyPairs> for KeyPair {
+impl From<Bls12381KeyPairs> for BaseKeyPair {
     fn from(key_pair: Bls12381KeyPairs) -> Self {
-        KeyPair::Bls12381G1G2(key_pair)
+        BaseKeyPair::Bls12381G1G2(key_pair)
     }
 }
 

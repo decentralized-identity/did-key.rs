@@ -2,7 +2,7 @@ use crate::{
     didcore::*,
     ed25519::Ed25519KeyPair,
     traits::{CoreSign, DIDCore, Fingerprint, Generate, KeyMaterial},
-    AsymmetricKey, Error, KeyPair,
+    AsymmetricKey, Error, BaseKeyPair,
 };
 
 use super::{generate_seed, ECDH};
@@ -144,9 +144,9 @@ impl Fingerprint for X25519KeyPair {
     }
 }
 
-impl From<X25519KeyPair> for KeyPair {
+impl From<X25519KeyPair> for BaseKeyPair {
     fn from(key_pair: X25519KeyPair) -> Self {
-        KeyPair::X25519(key_pair)
+        BaseKeyPair::X25519(key_pair)
     }
 }
 
