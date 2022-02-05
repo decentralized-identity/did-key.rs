@@ -48,16 +48,24 @@ pub struct IetfJsonPatch {
     pub value: serde_json::Value,
 }
 
-#[derive(Deserialize, Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Deserialize)]
 pub struct VerificationMethod {
     pub id: String,
+    #[serde(rename = "type")]
     pub key_type: String,
     pub controller: String,
+    #[serde(alias = "publicKeyBase58")]
+    #[serde(alias = "publicKeyMultibase")]
+    #[serde(alias = "publicKeyJwk")]
     pub public_key: Option<KeyFormat>,
+    #[serde(alias = "privateKeyBase58")]
+    #[serde(alias = "privateKeyMultibase")]
+    #[serde(alias = "privateKeyJwk")]
     pub private_key: Option<KeyFormat>,
 }
 
 #[derive(Serialize, Debug, Clone, PartialEq, Deserialize)]
+#[serde(untagged)]
 pub enum KeyFormat {
     Base58(String),
     Multibase(Vec<u8>),

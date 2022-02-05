@@ -128,15 +128,21 @@ pub fn verify_json_patch_jws(jws: &JWS, key: &KeyPair) -> bool {
     return false;
 }
 
-// use json_patch helpers to update a DID JSON document
-pub fn patch_json_document(doc: &Document, json_patch: &IetfJsonPatch) -> Result<Document, Error> {
-    let mut new_doc = serde_json::to_value(doc).map_err(|_| Error::EncodeError)?;
-    match patch(&mut new_doc, &from_value(json_patch.value.clone()).unwrap()) {
-        Ok(()) => {
-            serde_json::from_value(new_doc)
-                .map_err(|_| Error::DecodeError)?
-        }
-        Err(e) => Err(Error::Unknown(format!("Couldn't apply patch: {:?}", e))),
+// Use json_patch helpers to update a DID JSON document. Upon error, return original document.
+pub fn patch_json_document(doc: &Document, json_patch: &IetfJsonPatch) -> Document {
+    let original = doc.clone();
+
+    fn apply_patch(doc: &Document, json_patch: &IetfJsonPatch) -> Result<Document, Box<dyn std::error::Error>> {
+        let parsed_patch = from_value(json_patch.value.clone())?;
+        let mut json_doc = serde_json::to_value(doc.clone())?;
+        patch(&mut json_doc, &parsed_patch)?;
+        serde_json::from_value(json_doc)
+            .or_else(|err| Err(Box::new(err) as Box<dyn std::error::Error>))
+    }
+
+    match apply_patch(doc, json_patch) {
+        Ok(result) => result,
+        Err(_) => original
     }
 }
 
@@ -219,7 +225,7 @@ impl DIDCore for KeyPair {
             BaseKeyPair::Secp256k1(x) => x.get_did_document(config),
         };
         match &self.patch {
-            Some(patch) => patch_json_document(&doc, patch).unwrap_or(doc),
+            Some(patch) => patch_json_document(&doc, patch),
             None => doc
         }
     }
@@ -568,28 +574,19 @@ pub mod test {
         let json = serde_json::to_string_pretty(&initial_did_doc).unwrap();
         println!("{}", json);
 
-        let controller = format!("did:key:{}", key.fingerprint().clone());
-        let vm = &key.get_verification_methods(CONFIG_JOSE_PUBLIC, &controller).first().unwrap().to_owned();
-        let jwk = serde_json::to_string(&vm.public_key.clone().unwrap()).unwrap();
-        let patch_value = json!({
-            "id": &key.fingerprint(),
-            "type": &key.get_verification_methods(CONFIG_JOSE_PRIVATE, &controller).first().unwrap()
-                .key_type,
-            "controller": &controller,
-            "jwk": &jwk
-        });
+        let delegated_key_uri = "did:key:z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL#z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL";
         let patches = vec![
             PatchOperation::Add(AddOperation{ 
                 path: "/capabilityDelegation/1".to_string(), 
-                value: patch_value.clone()
+                value: json!(delegated_key_uri)
             }),
         ];
 
         let patched_uri = generate_json_patch_did_uri(&key, &patches);
         println!("{}", patched_uri);
-        let patched_key = resolve(&patched_uri).unwrap();
-        let did_doc = patched_key.get_did_document(CONFIG_JOSE_PUBLIC);
+        let did_doc = resolve(&patched_uri).unwrap().get_did_document(CONFIG_JOSE_PUBLIC);
         let json = serde_json::to_string_pretty(&did_doc).unwrap();
         println!("{}", json);
+        assert!(true)
     }
 }
