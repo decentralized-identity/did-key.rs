@@ -385,6 +385,8 @@ pub mod test {
     use super::*;
     use crate::{didcore::Config, BaseKeyPair};
     use fluid::prelude::*;
+    use json_patch::{AddOperation};
+    use serde_json::json;
 
     #[test]
     fn test_demo() {
@@ -508,5 +510,86 @@ pub mod test {
         assert_eq!(actual.fingerprint(), expected.fingerprint());
 
         assert_eq!(expected.get_did_document(Config::default()), actual.get_did_document(Config::default()));
+    }
+
+    #[test]
+    fn test_demo_decode_jws() {
+        let key = generate::<Ed25519KeyPair>(None);
+        let controller = format!("did:key:{}", key.fingerprint().clone());
+        let vm = &key.get_verification_methods(CONFIG_JOSE_PUBLIC, &controller).first().unwrap().to_owned();
+        let jwk = serde_json::to_string(&vm.public_key.clone().unwrap()).unwrap();
+
+        let patch_value = json!({
+            "id": &key.fingerprint(),
+            "type": &key.get_verification_methods(CONFIG_JOSE_PRIVATE, &controller).first().unwrap()
+                .key_type,
+            "controller": &controller,
+            "jwk": &jwk
+        });
+        let patches = vec![
+            PatchOperation::Add(AddOperation{ 
+                path: "/capabilityDelegation/1".to_string(), 
+                value: patch_value.clone()
+            }),
+        ];
+        let patched_uri = generate_json_patch_did_uri(&key, &patches);
+        let query_pairs: HashMap<_, _> = DID::from_str(&patched_uri).unwrap()
+            .query_pairs().into_owned().collect();
+        let jws = query_pairs.get("signedIetfJsonPatch").unwrap();
+        let decoded = decode_jws(&jws).unwrap();
+        println!("{:?}", &patched_uri);
+        println!("{:?}", &decoded);
+
+        let expected_payload = serde_json::to_vec(
+            &json!({
+                "ietf-json-patch": [
+                    {
+                        "op": "add",
+                        "path": "/capabilityDelegation/1",
+                        "value": patch_value.clone()
+                    }
+                ]
+            })
+        ).unwrap();
+        let expected_signature = key.sign(&expected_payload);
+        let expected_jws = JWS {
+            header: JWSHeader { algorithm: vm.key_type.clone(), key_id: Some(vm.id.clone()) },
+            payload: expected_payload,
+            signature: expected_signature,
+        };
+
+        assert_eq!(decoded, expected_jws)
+    }
+
+    #[test]
+    fn test_demo_json_patch() {
+        let key = generate::<Ed25519KeyPair>(None);
+        let initial_did_doc = key.get_did_document(CONFIG_JOSE_PUBLIC);
+        let json = serde_json::to_string_pretty(&initial_did_doc).unwrap();
+        println!("{}", json);
+
+        let controller = format!("did:key:{}", key.fingerprint().clone());
+        let vm = &key.get_verification_methods(CONFIG_JOSE_PUBLIC, &controller).first().unwrap().to_owned();
+        let jwk = serde_json::to_string(&vm.public_key.clone().unwrap()).unwrap();
+        let patch_value = json!({
+            "id": &key.fingerprint(),
+            "type": &key.get_verification_methods(CONFIG_JOSE_PRIVATE, &controller).first().unwrap()
+                .key_type,
+            "controller": &controller,
+            "jwk": &jwk
+        });
+        let patches = vec![
+            PatchOperation::Add(AddOperation{ 
+                path: "/capabilityDelegation/1".to_string(), 
+                value: patch_value.clone()
+            }),
+        ];
+
+        let patched_uri = generate_json_patch_did_uri(&key, &patches);
+        println!("{}", patched_uri);
+        let patched_key = resolve(&patched_uri).unwrap();
+        let did_doc = patched_key.get_did_document(CONFIG_JOSE_PUBLIC);
+        let json = serde_json::to_string_pretty(&did_doc).unwrap();
+        println!("{}", json);
     }
 }
