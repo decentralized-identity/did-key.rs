@@ -87,21 +87,18 @@ pub(crate) fn generate_seed(initial_seed: &[u8]) -> Result<[u8; 32], &str> {
 // Decode from a base-64 JWS string into a JWS helper struct
 pub fn decode_jws(jws_b64: &str) -> Result<JWS, Error> {
     let mut itr = jws_b64.splitn(3, ".").map(|slice| {
-        base64::decode_config(slice, base64::URL_SAFE_NO_PAD).unwrap()
+        base64::decode_config(slice, base64::URL_SAFE_NO_PAD)
     });
 
-    let (header, payload, signature) = match (itr.next(), itr.next(), itr.next()) {
-        (Some(h), Some(p), Some(s)) => (h, p, s),
-        _ => return Err(Error::DecodeError)
-    };
-
-    Ok(
-        JWS {
-            header: serde_json::from_slice(&header).unwrap(),
-            payload: payload.to_vec(),
-            signature: signature.to_vec(),
+    if let (Some(header), Some(payload), Some(signature)) = (itr.next(), itr.next(), itr.next()) {
+        if let (Ok(header), Ok(payload), Ok(signature)) = (header, payload, signature) {
+            return match serde_json::from_slice(&header) {
+                Ok(header_json) => Ok(JWS { header: header_json, payload: payload.to_vec(), signature: signature.to_vec() }),
+                Err(_) => Err(Error::DecodeError)
+            };
         }
-    )
+    }
+    Err(Error::DecodeError)
 }
 
 // Translate a JWS helper struct into the IetfJsonPatch serializable struct
@@ -117,8 +114,8 @@ pub fn verify_json_patch_jws(jws: &JWS, key: &KeyPair) -> bool {
     let kid = &jws.header.key_id;
     let did = key.get_did_document(Config::default());
 
-    if let Some(authentication) = did.authentication {
-        if let Some(_key_id) = authentication.iter().find(|&s| *s == kid.clone().unwrap()) {
+    if let (Some(kid), Some(authentication)) = (kid, did.authentication) {
+        if let Some(_key_id) = authentication.iter().find(|&s| *s == kid.clone()) {
             match key.verify(&jws.payload, &jws.signature) {
                 Ok(()) => { return true; },
                 Err(_) => { return false; },
@@ -147,30 +144,35 @@ pub fn patch_json_document(doc: &Document, json_patch: &IetfJsonPatch) -> Docume
 }
 
 // Generate a JWS to be used in a JSON patch request
-pub fn generate_json_patch_jws(key: &KeyPair, operations: &Vec<PatchOperation>) -> String {
+pub fn generate_json_patch_jws(key: &KeyPair, operations: &Vec<PatchOperation>) -> Result<String, Error> {
     let controller = format!("did:key:{}", key.fingerprint().clone());
-    let vm = key.get_verification_methods(CONFIG_JOSE_PUBLIC, &controller).first().unwrap().to_owned();
+    let vm = key.get_verification_methods(CONFIG_JOSE_PUBLIC, &controller).first()
+        .ok_or(Error::DecodeError)?.to_owned();
 
-    let patch_payload = serde_json::to_vec(&json!({ "ietf-json-patch": operations })).unwrap_or(vec![]);
+    let patch_payload = serde_json::to_vec(&json!({ "ietf-json-patch": operations }))
+        .map_err(|_| Error::EncodeError)?;
     let signature = key.sign(&patch_payload);
     let jws = JWS {
         header: JWSHeader { algorithm: vm.key_type.clone(), key_id: Some(vm.id.clone()) },
         payload: patch_payload,
         signature: signature
     };
-    format!(
-        "{}.{}.{}",
-        base64::encode_config(&serde_json::to_string(&jws.header)
-            .unwrap().as_bytes(), base64::URL_SAFE_NO_PAD),
-        base64::encode_config(&jws.payload, base64::URL_SAFE_NO_PAD),
-        base64::encode_config(&jws.signature, base64::URL_SAFE_NO_PAD)
+    Ok(
+        format!(
+            "{}.{}.{}",
+            base64::encode_config(&serde_json::to_string(&jws.header)
+                .map_err(|_| Error::EncodeError)?.as_bytes(), base64::URL_SAFE_NO_PAD),
+            base64::encode_config(&jws.payload, base64::URL_SAFE_NO_PAD),
+            base64::encode_config(&jws.signature, base64::URL_SAFE_NO_PAD)
+        )
     )
 }
 
 // Generate a DID URI with a JSON patch
-pub fn generate_json_patch_did_uri(key: &KeyPair, operations: &Vec<PatchOperation>) -> String {
+pub fn generate_json_patch_did_uri(key: &KeyPair, operations: &Vec<PatchOperation>) -> Result<String, Error> {
     let base_uri = format!("did:key:{}", key.fingerprint().clone());
-    format!("{}?signedIetfJsonPatch={}", base_uri, generate_json_patch_jws(key, operations))
+    let jws = generate_json_patch_jws(key, operations)?;
+    Ok(format!("{}?signedIetfJsonPatch={}", base_uri, jws))
 }
 
 impl CoreSign for KeyPair {
@@ -539,7 +541,7 @@ pub mod test {
                 value: patch_value.clone()
             }),
         ];
-        let patched_uri = generate_json_patch_did_uri(&key, &patches);
+        let patched_uri = generate_json_patch_did_uri(&key, &patches).unwrap();
         let query_pairs: HashMap<_, _> = DID::from_str(&patched_uri).unwrap()
             .query_pairs().into_owned().collect();
         let jws = query_pairs.get("signedIetfJsonPatch").unwrap();
@@ -583,7 +585,7 @@ pub mod test {
             }),
         ];
 
-        let patched_uri = generate_json_patch_did_uri(&key, &patches);
+        let patched_uri = generate_json_patch_did_uri(&key, &patches).unwrap();
         println!("{}", patched_uri);
         let did_doc = resolve(&patched_uri).unwrap().get_did_document(CONFIG_JOSE_PUBLIC);
         let json = serde_json::to_string_pretty(&did_doc).unwrap();
