@@ -273,7 +273,7 @@ impl TryFrom<&str> for KeyPair {
 
         let url = match DID::from_str(did_uri) {
             Ok(url) => url,
-            Err(_) => return Err(Error::Unknown("couldn't parse DID URI".into()))
+            Err(_) => return Err(Error::Unknown("couldn't parse DID URI".into())),
         };
 
         let pub_key = match url.method_id().strip_prefix("z") {
@@ -293,7 +293,7 @@ impl TryFrom<&str> for KeyPair {
             _ => Err(Error::ResolutionFailed),
         };
 
-        // If presented with a *valid* signed JSON patch, apply it.
+        // If presented with a *valid* signed JSON patch, apply it. Otherwise, return the key un-patched.
         match base_key_pair {
             Ok(key) => {
                 let mut key_pair = KeyPair { base_key_pair: key, patch: None};
@@ -302,17 +302,18 @@ impl TryFrom<&str> for KeyPair {
                 match signed_ietf_json_patch {
                     None => Ok(key_pair),
                     Some(patch) => {
-                        let decoded = decode_jws(&patch)?;
-                        if let Some(parsed_patch) = get_json_patch(&decoded).ok() {
-                            if verify_json_patch_jws(&decoded, &key_pair) {
-                                key_pair.patch = Some(parsed_patch);
-                            }
-                        }
+                        decode_jws(&patch).map(| decoded: JWS | {
+                            get_json_patch(&decoded).map(| parsed_patch: IetfJsonPatch | {
+                                if verify_json_patch_jws(&decoded, &key_pair) {
+                                    key_pair.patch = Some(parsed_patch);
+                                }
+                            })
+                        }).ok();
                         Ok(key_pair)
                     }
                 }
             },
-            Err(err) => return Err(err)
+            Err(err) => Err(err)
         }
     }
 }
