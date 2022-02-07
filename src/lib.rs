@@ -311,7 +311,7 @@ impl TryFrom<&str> for PatchedKeyPair {
             _ => Err(Error::ResolutionFailed),
         };
 
-        // If presented with *valid* signed JSON patches, apply them. Otherwise, return the key un-patched.
+        // If presented with valid signed JSON patches, apply them. If presented with invalid patches, return an error.
         match key_pair {
             Ok(key) => {
                 let mut patched_key_pair = PatchedKeyPair { key_pair: key, patches: None};
