@@ -37,14 +37,14 @@ pub enum Error {
 
 pub struct KeyPair {
     base_key_pair: BaseKeyPair,
-    patch: Option<IetfJsonPatch>
+    patches: Option<Vec<PatchOperation>>
 }
 
 impl KeyPair {
     fn new(base_key_pair: BaseKeyPair) -> KeyPair {
         KeyPair {
             base_key_pair: base_key_pair,
-            patch: None
+            patches: None
         }
     }
 }
@@ -101,12 +101,17 @@ pub fn decode_jws(jws_b64: &str) -> Result<JWS, Error> {
     Err(Error::DecodeError)
 }
 
-// Translate a JWS helper struct into the IetfJsonPatch serializable struct
-pub fn get_json_patch(jws: &JWS) -> Result<IetfJsonPatch, Error> {
-    match serde_json::from_slice::<IetfJsonPatch>(&jws.payload) {
-        Ok(docs) => Ok(docs),
-        Err(_) => Err(Error::DecodeError)
+// Translate from raw JWS payload (in a helper struct) to serializable patch values
+pub fn get_json_patches(jws: &JWS) -> Result<Vec<PatchOperation>, Error> {
+    if let Ok(patches) = serde_json::from_slice::<serde_json::Value>(&jws.payload) {
+        if let Some(value) = patches.get("ietf-json-patch") {
+            return match serde_json::from_value(value.to_owned()) {
+                Ok(result) => Ok(result),
+                Err(_) => Err(Error::DecodeError)
+            };
+        }
     }
+    Err(Error::DecodeError)
 }
 
 // Per the spec (https://bit.ly/34xScAu), verify JWS patch change is from the controller
@@ -125,35 +130,36 @@ pub fn verify_json_patch_jws(jws: &JWS, key: &KeyPair) -> bool {
     return false;
 }
 
-// Use json_patch helpers to update a DID JSON document. Upon error, return original document.
-pub fn patch_json_document(doc: &Document, json_patch: &IetfJsonPatch) -> Document {
+// Use json_patch helpers to patch a DID JSON document. Upon error, return original document.
+pub fn patch_json_document(doc: &Document, patches: Vec<PatchOperation>) -> Document {
     let original = doc.clone();
 
-    fn apply_patch(doc: &Document, json_patch: &IetfJsonPatch) -> Result<Document, Box<dyn std::error::Error>> {
-        let parsed_patch = from_value(json_patch.value.clone())?;
-        let mut json_doc = serde_json::to_value(doc.clone())?;
+    fn apply_patch(doc: &Document, patches: Vec<PatchOperation>) -> Result<Document, Box<dyn std::error::Error>> {
+        let parsed_patch = from_value(json!(patches))?;
+        let mut json_doc = serde_json::to_value(doc)?;
         patch(&mut json_doc, &parsed_patch)?;
         serde_json::from_value(json_doc)
-            .or_else(|err| Err(Box::new(err) as Box<dyn std::error::Error>))
+            .or_else(|err| { Err(Box::new(err) as Box<dyn std::error::Error>) })
     }
 
-    match apply_patch(doc, json_patch) {
+    match apply_patch(doc, patches) {
         Ok(result) => result,
         Err(_) => original
     }
+
 }
 
-// Generate a JWS to be used in a JSON patch request
-pub fn generate_json_patch_jws(key: &KeyPair, operations: &Vec<PatchOperation>) -> Result<String, Error> {
+// Generate a JWS to be used in a JSON patch request. Signed by the provided KeyPair.
+pub fn generate_json_patch_jws(key: &KeyPair, operations: Vec<PatchOperation>) -> Result<String, Error> {
     let controller = format!("did:key:{}", key.fingerprint().clone());
-    let vm = key.get_verification_methods(CONFIG_JOSE_PUBLIC, &controller).first()
-        .ok_or(Error::DecodeError)?.to_owned();
+    let vm = key.get_verification_methods(Config::default(), &controller).first()
+        .ok_or(Error::DecodeError)?.clone();
 
     let patch_payload = serde_json::to_vec(&json!({ "ietf-json-patch": operations }))
         .map_err(|_| Error::EncodeError)?;
     let signature = key.sign(&patch_payload);
     let jws = JWS {
-        header: JWSHeader { algorithm: vm.key_type.clone(), key_id: Some(vm.id.clone()) },
+        header: JWSHeader { algorithm: vm.key_type, key_id: Some(vm.id) },
         payload: patch_payload,
         signature: signature
     };
@@ -169,8 +175,8 @@ pub fn generate_json_patch_jws(key: &KeyPair, operations: &Vec<PatchOperation>) 
 }
 
 // Generate a DID URI with a JSON patch
-pub fn generate_json_patch_did_uri(key: &KeyPair, operations: &Vec<PatchOperation>) -> Result<String, Error> {
-    let base_uri = format!("did:key:{}", key.fingerprint().clone());
+pub fn generate_json_patch_did_uri(key: &KeyPair, operations: Vec<PatchOperation>) -> Result<String, Error> {
+    let base_uri = format!("did:key:{}", &key.fingerprint());
     let jws = generate_json_patch_jws(key, operations)?;
     Ok(format!("{}?signedIetfJsonPatch={}", base_uri, jws))
 }
@@ -226,8 +232,8 @@ impl DIDCore for KeyPair {
             BaseKeyPair::Bls12381G1G2(x) => x.get_did_document(config),
             BaseKeyPair::Secp256k1(x) => x.get_did_document(config),
         };
-        match &self.patch {
-            Some(patch) => patch_json_document(&doc, patch),
+        match &self.patches {
+            Some(patches) => patch_json_document(&doc, patches.to_vec()),
             None => doc
         }
     }
@@ -267,6 +273,16 @@ impl Fingerprint for KeyPair {
     }
 }
 
+impl AddDIDJsonPatches for KeyPair {
+    fn add_patches(&mut self, patches: Vec<PatchOperation>) {
+        if let Some(existing_patches) = self.patches.as_mut() {
+            existing_patches.extend(patches);
+        } else {
+            self.patches = Some(patches);
+        }
+    }
+}
+
 impl TryFrom<&str> for KeyPair {
     type Error = Error;
 
@@ -295,19 +311,19 @@ impl TryFrom<&str> for KeyPair {
             _ => Err(Error::ResolutionFailed),
         };
 
-        // If presented with a *valid* signed JSON patch, apply it. Otherwise, return the key un-patched.
+        // If presented with *valid* signed JSON patches, apply them. Otherwise, return the key un-patched.
         match base_key_pair {
             Ok(key) => {
-                let mut key_pair = KeyPair { base_key_pair: key, patch: None};
+                let mut key_pair = KeyPair { base_key_pair: key, patches: None};
                 let query_pairs: HashMap<_, _> = url.query_pairs().into_owned().collect();
                 let signed_ietf_json_patch = query_pairs.get("signedIetfJsonPatch");
                 match signed_ietf_json_patch {
                     None => Ok(key_pair),
                     Some(patch) => {
                         decode_jws(&patch).map(| decoded: JWS | {
-                            get_json_patch(&decoded).map(| parsed_patch: IetfJsonPatch | {
+                            get_json_patches(&decoded).map(| parsed_patches: Vec<PatchOperation> | {
                                 if verify_json_patch_jws(&decoded, &key_pair) {
-                                    key_pair.patch = Some(parsed_patch);
+                                    key_pair.add_patches(parsed_patches);
                                 }
                             })
                         }).ok();
@@ -383,9 +399,9 @@ pub use {
     crate::p256::P256KeyPair,
     crate::secp256k1::Secp256k1KeyPair,
     bls12381::Bls12381KeyPairs,
-    didcore::{Config, Document, IetfJsonPatch, KeyFormat, VerificationMethod, CONFIG_JOSE_PRIVATE, CONFIG_JOSE_PUBLIC, CONFIG_LD_PRIVATE, CONFIG_LD_PUBLIC, JWK, JWS, JWSHeader},
+    didcore::{Config, Document, KeyFormat, VerificationMethod, CONFIG_JOSE_PRIVATE, CONFIG_JOSE_PUBLIC, CONFIG_LD_PRIVATE, CONFIG_LD_PUBLIC, JWK, JWS, JWSHeader},
     ed25519::Ed25519KeyPair,
-    traits::{CoreSign, DIDCore, Fingerprint, Generate, KeyMaterial, ECDH},
+    traits::{AddDIDJsonPatches, CoreSign, DIDCore, Fingerprint, Generate, KeyMaterial, ECDH},
     x25519::X25519KeyPair,
 };
 
@@ -394,7 +410,7 @@ pub mod test {
     use super::*;
     use crate::{didcore::Config, BaseKeyPair};
     use fluid::prelude::*;
-    use json_patch::{AddOperation};
+    use json_patch::{AddOperation, ReplaceOperation};
     use serde_json::json;
 
     #[test]
@@ -522,74 +538,81 @@ pub mod test {
     }
 
     #[test]
-    fn test_demo_decode_jws() {
-        let key = generate::<Ed25519KeyPair>(None);
-        let controller = format!("did:key:{}", key.fingerprint().clone());
-        let vm = &key.get_verification_methods(CONFIG_JOSE_PUBLIC, &controller).first().unwrap().to_owned();
-        let jwk = serde_json::to_string(&vm.public_key.clone().unwrap()).unwrap();
-
-        let patch_value = json!({
-            "id": &key.fingerprint(),
-            "type": &key.get_verification_methods(CONFIG_JOSE_PRIVATE, &controller).first().unwrap()
-                .key_type,
-            "controller": &controller,
-            "jwk": &jwk
-        });
-        let patches = vec![
-            PatchOperation::Add(AddOperation{ 
-                path: "/capabilityDelegation/1".to_string(), 
-                value: patch_value.clone()
-            }),
-        ];
-        let patched_uri = generate_json_patch_did_uri(&key, &patches).unwrap();
-        let query_pairs: HashMap<_, _> = DID::from_str(&patched_uri).unwrap()
-            .query_pairs().into_owned().collect();
-        let jws = query_pairs.get("signedIetfJsonPatch").unwrap();
-        let decoded = decode_jws(&jws).unwrap();
-        println!("{:?}", &patched_uri);
-        println!("{:?}", &decoded);
-
-        let expected_payload = serde_json::to_vec(
-            &json!({
-                "ietf-json-patch": [
-                    {
-                        "op": "add",
-                        "path": "/capabilityDelegation/1",
-                        "value": patch_value.clone()
-                    }
-                ]
-            })
-        ).unwrap();
-        let expected_signature = key.sign(&expected_payload);
+    fn test_decode_jws() {
+        // example pulled from did-spec-extensions: https://bit.ly/3rvNmwI
+        let jws = "eyJraWQiOiJkaWQ6ZXhhbXBsZTo0NTYjX1FxMFVMMkZxNjUxUTBGamQ2VHZuWUUtZmFIaU9wUmxQVlFjWV8tdEE0QSIsImFsZyI6IkVkRFNBIn0.eyJpZXRmLWpzb24tcGF0Y2giOlt7Im9wIjoiYWRkIiwicGF0aCI6Ii9wdWJsaWNLZXkvMSIsInZhbHVlIjp7ImlkIjoiIzRTWi1TdFhycDVZZDRfNHJ4SFZUQ1lUSHl0NHp5UGZOMWZJdVlzbTZrM0EiLCJ0eXBlIjoiSnNvbldlYktleTIwMjAiLCJjb250cm9sbGVyIjoiZGlkOmtleTp6Nk1rblNRTlo3Ylp3Uzl4dEVuaHZyNTQ5bTh4UEpGWGpOZXBtU2dlSmo4MzdnbVMiLCJwdWJsaWNLZXlKd2siOnsiY3J2Ijoic2VjcDI1NmsxIiwieCI6Ilo0WTNOTk94djBKNnRDZ3FPQkZuSG5hWmhKRjZMZHVsVDd6OEEtMkQ1XzgiLCJ5IjoiaTVhMk50Sm9VS1hrTG02cThuT0V1OVdPa3NvMUFnNkZUVVQ2a19MTW5HayIsImt0eSI6IkVDIiwia2lkIjoiNFNaLVN0WHJwNVlkNF80cnhIVlRDWVRIeXQ0enlQZk4xZkl1WXNtNmszQSJ9fX1dfQ.OgW0DB8SCVSBrSPA4yXcXLH8tcZcC5SbrqKye0qEWytC3gmA7mLU9BrZzT7IWv0S3KNo8Ftkn5X1l8w7TPsQAw";
+        let expected_payload = br##"{"ietf-json-patch":[{"op":"add","path":"/publicKey/1","value":{"id":"#4SZ-StXrp5Yd4_4rxHVTCYTHyt4zyPfN1fIuYsm6k3A","type":"JsonWebKey2020","controller":"did:key:z6MknSQNZ7bZwS9xtEnhvr549m8xPJFXjNepmSgeJj837gmS","publicKeyJwk":{"crv":"secp256k1","x":"Z4Y3NNOxv0J6tCgqOBFnHnaZhJF6LdulT7z8A-2D5_8","y":"i5a2NtJoUKXkLm6q8nOEu9WOkso1Ag6FTUT6k_LMnGk","kty":"EC","kid":"4SZ-StXrp5Yd4_4rxHVTCYTHyt4zyPfN1fIuYsm6k3A"}}}]}"##;
+        let expected_signature = b":\x05\xb4\x0c\x1f\x12\tT\x81\xad#\xc0\xe3%\xdc\\\xb1\xfc\xb5\xc6\\\x0b\x94\x9b\xae\xa2\xb2{J\x84[+B\xde\t\x80\xeeb\xd4\xf4\x1a\xd9\xcd>\xc8Z\xfd\x12\xdc\xa3h\xf0[d\x9f\x95\xf5\x97\xcc;L\xfb\x10\x03";
         let expected_jws = JWS {
-            header: JWSHeader { algorithm: vm.key_type.clone(), key_id: Some(vm.id.clone()) },
-            payload: expected_payload,
-            signature: expected_signature,
+            header: serde_json::from_str(
+                r#"{"kid":"did:example:456#_Qq0UL2Fq651Q0Fjd6TvnYE-faHiOpRlPVQcY_-tA4A","alg":"EdDSA"}"#
+            ).unwrap(),
+            payload: expected_payload.to_vec(),
+            signature: expected_signature.to_vec(),
         };
+
+        let decoded = decode_jws(&jws).unwrap();
+        println!("{:?}", &decoded);
 
         assert_eq!(decoded, expected_jws)
     }
 
     #[test]
-    fn test_demo_json_patch() {
-        let key = generate::<Ed25519KeyPair>(None);
+    fn test_json_patch_demo() {
+        let mut key = generate::<Ed25519KeyPair>(None);
         let initial_did_doc = key.get_did_document(CONFIG_JOSE_PUBLIC);
         let json = serde_json::to_string_pretty(&initial_did_doc).unwrap();
         println!("{}", json);
 
-        let delegated_key_uri = "did:key:z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL#z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL";
+        let shared_capability_key_uri = "did:key:z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL#z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL";
         let patches = vec![
             PatchOperation::Add(AddOperation{ 
                 path: "/capabilityDelegation/1".to_string(), 
-                value: json!(delegated_key_uri)
+                value: json!(shared_capability_key_uri)
+            }),
+            PatchOperation::Add(AddOperation{ 
+                path: "/capabilityInvocation/1".to_string(), 
+                value: json!(shared_capability_key_uri)
             }),
         ];
+        
+        key.add_patches(patches);
+        let did_doc = key.get_did_document(CONFIG_JOSE_PUBLIC);
+        let json = serde_json::to_string_pretty(&did_doc).unwrap();
+        println!("{}", json);
 
-        let patched_uri = generate_json_patch_did_uri(&key, &patches).unwrap();
-        println!("{}", patched_uri);
+        let expected_doc = &mut initial_did_doc.clone();
+        let capability_delegation = &mut expected_doc.capability_delegation.as_mut().unwrap();
+        let capability_invocation = &mut expected_doc.capability_invocation.as_mut().unwrap();
+        capability_delegation.insert(1, shared_capability_key_uri.to_string());
+        capability_invocation.insert(1, shared_capability_key_uri.to_string());
+        assert_eq!(did_doc, *expected_doc);
+    }
+
+    #[test]
+    fn test_json_patch_demo_uri_resolutions() {
+        let key = generate::<Ed25519KeyPair>(None);
+        let resolved_key = resolve(&format!("did:key:{}", (key.fingerprint()))).unwrap();
+        let initial_did_doc_resolved = resolved_key.get_did_document(CONFIG_JOSE_PUBLIC);
+        let json = serde_json::to_string_pretty(&initial_did_doc_resolved).unwrap();
+        println!("{}", json);
+
+        let new_capability_key_uri = "did:key:z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL#z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL";
+        let patches = vec![
+            PatchOperation::Replace(ReplaceOperation{ 
+                path: "/capabilityDelegation/0".to_string(), 
+                value: json!(new_capability_key_uri)
+            })
+        ];
+
+        let patched_uri = generate_json_patch_did_uri(&key, patches).unwrap();
         let did_doc = resolve(&patched_uri).unwrap().get_did_document(CONFIG_JOSE_PUBLIC);
         let json = serde_json::to_string_pretty(&did_doc).unwrap();
         println!("{}", json);
-        assert!(true)
+
+        let mut expected_doc = initial_did_doc_resolved.clone();
+        let _ = std::mem::replace(&mut expected_doc.capability_delegation.as_mut().unwrap()[0], new_capability_key_uri.to_string());
+        assert_eq!(did_doc, expected_doc);
     }
+
 }

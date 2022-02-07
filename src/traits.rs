@@ -1,4 +1,5 @@
 use crate::{didcore::Config, Document, Error, VerificationMethod};
+use json_patch::PatchOperation;
 
 /// Return key material bytes
 pub trait KeyMaterial {
@@ -42,4 +43,8 @@ pub trait DIDCore {
 
 pub trait Fingerprint {
     fn fingerprint(&self) -> String;
+}
+
+pub trait AddDIDJsonPatches {
+    fn add_patches(&mut self, patches: Vec<PatchOperation>);
 }
