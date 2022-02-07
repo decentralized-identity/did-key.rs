@@ -132,7 +132,7 @@ pub fn verify_json_patch_jws(jws: &JWS, key: &KeyPair) -> bool {
 
 // Use json_patch helpers to patch a DID JSON document. Upon error, return original document.
 pub fn patch_json_document(doc: &Document, patches: Vec<PatchOperation>) -> Document {
-    let original = doc.clone();
+        let original = doc.clone();
 
     fn apply_patch(doc: &Document, patches: Vec<PatchOperation>) -> Result<Document, Box<dyn std::error::Error>> {
         let parsed_patch = from_value(json!(patches))?;
@@ -320,14 +320,20 @@ impl TryFrom<&str> for KeyPair {
                 match signed_ietf_json_patch {
                     None => Ok(key_pair),
                     Some(patch) => {
-                        decode_jws(&patch).map(| decoded: JWS | {
-                            get_json_patches(&decoded).map(| parsed_patches: Vec<PatchOperation> | {
+                        let decoded_patches = decode_jws(&patch).and_then(| decoded: JWS | {
+                            get_json_patches(&decoded).and_then(| parsed_patches: Vec<PatchOperation> | {
                                 if verify_json_patch_jws(&decoded, &key_pair) {
                                     key_pair.add_patches(parsed_patches);
+                                    Ok(())
+                                } else {
+                                    Err(Error::DecodeError)
                                 }
                             })
-                        }).ok();
-                        Ok(key_pair)
+                        });
+                        match decoded_patches {
+                            Ok(()) => Ok(key_pair),
+                            Err(e) => Err(e)
+                        }
                     }
                 }
             },
@@ -555,6 +561,12 @@ pub mod test {
         println!("{:?}", &decoded);
 
         assert_eq!(decoded, expected_jws)
+    }
+
+    #[test]
+    fn test_resolve_with_bad_json_patch_should_error() {
+        let result = resolve(&"did:example?signedIetfJsonPatch=BadEnCodiNGDonotUse");
+        assert!(result.is_err())
     }
 
     #[test]
