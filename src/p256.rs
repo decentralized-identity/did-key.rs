@@ -2,7 +2,7 @@ use super::{generate_seed, CoreSign};
 use crate::{
     didcore::{Config, KeyFormat, JWK},
     traits::{DIDCore, Fingerprint, Generate, KeyMaterial, ECDH},
-    AsymmetricKey, Document, Error, BaseKeyPair, VerificationMethod,
+    AsymmetricKey, Document, Error, KeyPair, VerificationMethod,
 };
 use p256::{
     ecdsa::{signature::Signer, signature::Verifier, Signature, SigningKey, VerifyingKey},
@@ -144,9 +144,9 @@ impl ECDH for P256KeyPair {
     }
 }
 
-impl From<P256KeyPair> for BaseKeyPair {
+impl From<P256KeyPair> for KeyPair {
     fn from(key_pair: P256KeyPair) -> Self {
-        BaseKeyPair::P256(key_pair)
+        KeyPair::P256(key_pair)
     }
 }
 
@@ -187,7 +187,7 @@ pub mod test {
 
         let resolved = resolve(did_uri).unwrap();
 
-        matches!(resolved.base_key_pair, BaseKeyPair::P256(_));
+        matches!(resolved.key_pair, KeyPair::P256(_));
     }
 
     #[test]

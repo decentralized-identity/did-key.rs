@@ -1,7 +1,7 @@
 use crate::{
     didcore::*,
     traits::{DIDCore, Fingerprint, Generate, KeyMaterial},
-    AsymmetricKey, Error, BaseKeyPair,
+    AsymmetricKey, Error, KeyPair,
 };
 
 use super::{generate_seed, CoreSign, ECDH};
@@ -107,7 +107,7 @@ impl DIDCore for Secp256k1KeyPair {
                 false => KeyFormat::Base58(bs58::encode(self.public_key.serialize()).into_string()),
                 true => KeyFormat::JWK(JWK {
                     key_type: "EC".into(),
-                    curve: "Secp256k1".into(),
+                    curve: "secp256k1".into(),
                     x: Some(base64::encode_config(&pk[1..33], base64::URL_SAFE_NO_PAD)),
                     y: Some(base64::encode_config(&pk[33..65], base64::URL_SAFE_NO_PAD)),
                     ..Default::default()
@@ -117,7 +117,7 @@ impl DIDCore for Secp256k1KeyPair {
                 false => KeyFormat::Base58(bs58::encode(self.private_key_bytes()).into_string()),
                 true => KeyFormat::JWK(JWK {
                     key_type: "EC".into(),
-                    curve: "Secp256k1".into(),
+                    curve: "secp256k1".into(),
                     x: Some(base64::encode_config(&pk[1..33], base64::URL_SAFE_NO_PAD)),
                     y: Some(base64::encode_config(&pk[33..65], base64::URL_SAFE_NO_PAD)),
                     d: Some(base64::encode_config(self.private_key_bytes(), base64::URL_SAFE_NO_PAD)),
@@ -154,9 +154,9 @@ impl Fingerprint for Secp256k1KeyPair {
     }
 }
 
-impl From<Secp256k1KeyPair> for BaseKeyPair {
+impl From<Secp256k1KeyPair> for KeyPair {
     fn from(key_pair: Secp256k1KeyPair) -> Self {
-        BaseKeyPair::Secp256k1(key_pair)
+        KeyPair::Secp256k1(key_pair)
     }
 }
 

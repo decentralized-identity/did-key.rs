@@ -10,7 +10,7 @@ use std::{
     todo,
 };
 
-pub enum BaseKeyPair {
+pub enum KeyPair {
     Ed25519(Ed25519KeyPair),
     X25519(X25519KeyPair),
     P256(P256KeyPair),
@@ -18,7 +18,7 @@ pub enum BaseKeyPair {
     Secp256k1(Secp256k1KeyPair),
 }
 
-pub type DIDKey = BaseKeyPair;
+pub type DIDKey = KeyPair;
 
 pub struct AsymmetricKey<P, S> {
     public_key: P,
@@ -35,39 +35,39 @@ pub enum Error {
     Unknown(String),
 }
 
-pub struct KeyPair {
-    base_key_pair: BaseKeyPair,
+pub struct PatchedKeyPair {
+    key_pair: KeyPair,
     patches: Option<Vec<PatchOperation>>
 }
 
-impl KeyPair {
-    fn new(base_key_pair: BaseKeyPair) -> KeyPair {
-        KeyPair {
-            base_key_pair: base_key_pair,
+impl PatchedKeyPair {
+    fn new(key_pair: KeyPair) -> PatchedKeyPair {
+        PatchedKeyPair {
+            key_pair: key_pair,
             patches: None
         }
     }
 }
 
 /// Generate new `did:key` of the specified type
-pub fn generate<T: Generate + CoreSign + ECDH + DIDCore + Fingerprint + Into<BaseKeyPair>>(seed: Option<&[u8]>) -> KeyPair {
-    KeyPair::new(T::new_with_seed(seed.map_or(vec![].as_slice(), |x| x)).into())
+pub fn generate<T: Generate + CoreSign + ECDH + DIDCore + Fingerprint + Into<KeyPair>>(seed: Option<&[u8]>) -> PatchedKeyPair {
+    PatchedKeyPair::new(T::new_with_seed(seed.map_or(vec![].as_slice(), |x| x)).into())
 }
 
 /// Resolve a `did:key` from a URI
-pub fn resolve(did_uri: &str) -> Result<KeyPair, Error> {
-    KeyPair::try_from(did_uri)
+pub fn resolve(did_uri: &str) -> Result<PatchedKeyPair, Error> {
+    PatchedKeyPair::try_from(did_uri)
 }
 
 /// Generate key pair from existing key material
-pub fn from_existing_key<T: Generate + CoreSign + ECDH + DIDCore + Fingerprint + Into<BaseKeyPair>>(
+pub fn from_existing_key<T: Generate + CoreSign + ECDH + DIDCore + Fingerprint + Into<KeyPair>>(
     public_key: &[u8],
     private_key: Option<&[u8]>,
-) -> KeyPair {
+) -> PatchedKeyPair {
     if private_key.is_some() {
-        KeyPair::new(T::from_secret_key(private_key.unwrap()).into())
+        PatchedKeyPair::new(T::from_secret_key(private_key.unwrap()).into())
     } else {
-        KeyPair::new(T::from_public_key(public_key).into())
+        PatchedKeyPair::new(T::from_public_key(public_key).into())
     }
 }
 
@@ -115,7 +115,7 @@ pub fn get_json_patches(jws: &JWS) -> Result<Vec<PatchOperation>, Error> {
 }
 
 // Per the spec (https://bit.ly/34xScAu), verify JWS patch change is from the controller
-pub fn verify_json_patch_jws(jws: &JWS, key: &KeyPair) -> bool {
+pub fn verify_json_patch_jws(jws: &JWS, key: &PatchedKeyPair) -> bool {
     let kid = &jws.header.key_id;
     let did = key.get_did_document(Config::default());
 
@@ -149,8 +149,8 @@ pub fn patch_json_document(doc: &Document, patches: Vec<PatchOperation>) -> Docu
 
 }
 
-// Generate a JWS to be used in a JSON patch request. Signed by the provided KeyPair.
-pub fn generate_json_patch_jws(key: &KeyPair, operations: Vec<PatchOperation>) -> Result<String, Error> {
+// Generate a JWS to be used in a JSON patch request. Signed by the provided PatchedKeyPair.
+pub fn generate_json_patch_jws(key: &PatchedKeyPair, operations: Vec<PatchOperation>) -> Result<String, Error> {
     let controller = format!("did:key:{}", key.fingerprint().clone());
     let vm = key.get_verification_methods(Config::default(), &controller).first()
         .ok_or(Error::DecodeError)?.clone();
@@ -175,62 +175,62 @@ pub fn generate_json_patch_jws(key: &KeyPair, operations: Vec<PatchOperation>) -
 }
 
 // Generate a DID URI with a JSON patch
-pub fn generate_json_patch_did_uri(key: &KeyPair, operations: Vec<PatchOperation>) -> Result<String, Error> {
+pub fn generate_json_patch_did_uri(key: &PatchedKeyPair, operations: Vec<PatchOperation>) -> Result<String, Error> {
     let base_uri = format!("did:key:{}", &key.fingerprint());
     let jws = generate_json_patch_jws(key, operations)?;
     Ok(format!("{}?signedIetfJsonPatch={}", base_uri, jws))
 }
 
-impl CoreSign for KeyPair {
+impl CoreSign for PatchedKeyPair {
     fn sign(&self, payload: &[u8]) -> Vec<u8> {
-        match &self.base_key_pair {
-            BaseKeyPair::Ed25519(x) => x.sign(payload),
-            BaseKeyPair::X25519(x) => x.sign(payload),
-            BaseKeyPair::P256(x) => x.sign(payload),
-            BaseKeyPair::Bls12381G1G2(x) => x.sign(payload),
-            BaseKeyPair::Secp256k1(x) => x.sign(payload),
+        match &self.key_pair {
+            KeyPair::Ed25519(x) => x.sign(payload),
+            KeyPair::X25519(x) => x.sign(payload),
+            KeyPair::P256(x) => x.sign(payload),
+            KeyPair::Bls12381G1G2(x) => x.sign(payload),
+            KeyPair::Secp256k1(x) => x.sign(payload),
         }
     }
 
     fn verify(&self, payload: &[u8], signature: &[u8]) -> Result<(), Error> {
-        match &self.base_key_pair {
-            BaseKeyPair::Ed25519(x) => x.verify(payload, signature),
-            BaseKeyPair::X25519(x) => x.verify(payload, signature),
-            BaseKeyPair::P256(x) => x.verify(payload, signature),
-            BaseKeyPair::Bls12381G1G2(x) => x.verify(payload, signature),
-            BaseKeyPair::Secp256k1(x) => x.verify(payload, signature),
+        match &self.key_pair {
+            KeyPair::Ed25519(x) => x.verify(payload, signature),
+            KeyPair::X25519(x) => x.verify(payload, signature),
+            KeyPair::P256(x) => x.verify(payload, signature),
+            KeyPair::Bls12381G1G2(x) => x.verify(payload, signature),
+            KeyPair::Secp256k1(x) => x.verify(payload, signature),
         }
     }
 }
 
-impl ECDH for KeyPair {
+impl ECDH for PatchedKeyPair {
     fn key_exchange(&self, their_public: &Self) -> Vec<u8> {
-        match (&self.base_key_pair, &their_public.base_key_pair) {
-            (BaseKeyPair::X25519(me), BaseKeyPair::X25519(them)) => me.key_exchange(them),
-            (BaseKeyPair::P256(me), BaseKeyPair::P256(them)) => me.key_exchange(them),
+        match (&self.key_pair, &their_public.key_pair) {
+            (KeyPair::X25519(me), KeyPair::X25519(them)) => me.key_exchange(them),
+            (KeyPair::P256(me), KeyPair::P256(them)) => me.key_exchange(them),
             _ => unimplemented!("ECDH not supported for this key combination"),
         }
     }
 }
 
-impl DIDCore for KeyPair {
+impl DIDCore for PatchedKeyPair {
     fn get_verification_methods(&self, config: didcore::Config, controller: &str) -> Vec<VerificationMethod> {
-        match &self.base_key_pair{
-            BaseKeyPair::Ed25519(x) => x.get_verification_methods(config, controller),
-            BaseKeyPair::X25519(x) => x.get_verification_methods(config, controller),
-            BaseKeyPair::P256(x) => x.get_verification_methods(config, controller),
-            BaseKeyPair::Bls12381G1G2(x) => x.get_verification_methods(config, controller),
-            BaseKeyPair::Secp256k1(x) => x.get_verification_methods(config, controller),
+        match &self.key_pair{
+            KeyPair::Ed25519(x) => x.get_verification_methods(config, controller),
+            KeyPair::X25519(x) => x.get_verification_methods(config, controller),
+            KeyPair::P256(x) => x.get_verification_methods(config, controller),
+            KeyPair::Bls12381G1G2(x) => x.get_verification_methods(config, controller),
+            KeyPair::Secp256k1(x) => x.get_verification_methods(config, controller),
         }
     }
 
     fn get_did_document(&self, config: didcore::Config) -> Document {
-        let doc = match &self.base_key_pair {
-            BaseKeyPair::Ed25519(x) => x.get_did_document(config),
-            BaseKeyPair::X25519(x) => x.get_did_document(config),
-            BaseKeyPair::P256(x) => x.get_did_document(config),
-            BaseKeyPair::Bls12381G1G2(x) => x.get_did_document(config),
-            BaseKeyPair::Secp256k1(x) => x.get_did_document(config),
+        let doc = match &self.key_pair {
+            KeyPair::Ed25519(x) => x.get_did_document(config),
+            KeyPair::X25519(x) => x.get_did_document(config),
+            KeyPair::P256(x) => x.get_did_document(config),
+            KeyPair::Bls12381G1G2(x) => x.get_did_document(config),
+            KeyPair::Secp256k1(x) => x.get_did_document(config),
         };
         match &self.patches {
             Some(patches) => patch_json_document(&doc, patches.to_vec()),
@@ -239,41 +239,41 @@ impl DIDCore for KeyPair {
     }
 }
 
-impl KeyMaterial for KeyPair {
+impl KeyMaterial for PatchedKeyPair {
     fn public_key_bytes(&self) -> Vec<u8> {
-        match &self.base_key_pair {
-            BaseKeyPair::Ed25519(x) => x.public_key_bytes(),
-            BaseKeyPair::X25519(x) => x.public_key_bytes(),
-            BaseKeyPair::P256(x) => x.public_key_bytes(),
-            BaseKeyPair::Bls12381G1G2(x) => x.public_key_bytes(),
-            BaseKeyPair::Secp256k1(x) => x.public_key_bytes(),
+        match &self.key_pair {
+            KeyPair::Ed25519(x) => x.public_key_bytes(),
+            KeyPair::X25519(x) => x.public_key_bytes(),
+            KeyPair::P256(x) => x.public_key_bytes(),
+            KeyPair::Bls12381G1G2(x) => x.public_key_bytes(),
+            KeyPair::Secp256k1(x) => x.public_key_bytes(),
         }
     }
 
     fn private_key_bytes(&self) -> Vec<u8> {
-        match &self.base_key_pair {
-            BaseKeyPair::Ed25519(x) => x.private_key_bytes(),
-            BaseKeyPair::X25519(x) => x.private_key_bytes(),
-            BaseKeyPair::P256(x) => x.private_key_bytes(),
-            BaseKeyPair::Bls12381G1G2(x) => x.private_key_bytes(),
-            BaseKeyPair::Secp256k1(x) => x.private_key_bytes(),
+        match &self.key_pair {
+            KeyPair::Ed25519(x) => x.private_key_bytes(),
+            KeyPair::X25519(x) => x.private_key_bytes(),
+            KeyPair::P256(x) => x.private_key_bytes(),
+            KeyPair::Bls12381G1G2(x) => x.private_key_bytes(),
+            KeyPair::Secp256k1(x) => x.private_key_bytes(),
         }
     }
 }
 
-impl Fingerprint for KeyPair {
+impl Fingerprint for PatchedKeyPair {
     fn fingerprint(&self) -> String {
-        match &self.base_key_pair {
-            BaseKeyPair::Ed25519(x) => x.fingerprint(),
-            BaseKeyPair::X25519(x) => x.fingerprint(),
-            BaseKeyPair::P256(x) => x.fingerprint(),
-            BaseKeyPair::Bls12381G1G2(x) => x.fingerprint(),
-            BaseKeyPair::Secp256k1(x) => x.fingerprint(),
+        match &self.key_pair {
+            KeyPair::Ed25519(x) => x.fingerprint(),
+            KeyPair::X25519(x) => x.fingerprint(),
+            KeyPair::P256(x) => x.fingerprint(),
+            KeyPair::Bls12381G1G2(x) => x.fingerprint(),
+            KeyPair::Secp256k1(x) => x.fingerprint(),
         }
     }
 }
 
-impl AddDIDJsonPatches for KeyPair {
+impl AddDIDJsonPatches for PatchedKeyPair {
     fn add_patches(&mut self, patches: Vec<PatchOperation>) {
         if let Some(existing_patches) = self.patches.as_mut() {
             existing_patches.extend(patches);
@@ -283,7 +283,7 @@ impl AddDIDJsonPatches for KeyPair {
     }
 }
 
-impl TryFrom<&str> for KeyPair {
+impl TryFrom<&str> for PatchedKeyPair {
     type Error = Error;
 
     fn try_from(did_uri: &str) -> Result<Self, Self::Error> {
@@ -302,28 +302,28 @@ impl TryFrom<&str> for KeyPair {
             None => return Err(Error::Unknown("invalid URI data".into())),
         };
 
-        let base_key_pair = match pub_key[0..2] {
-            [0xed, 0x1] => Ok(BaseKeyPair::Ed25519(Ed25519KeyPair::from_public_key(&pub_key[2..]))),
-            [0xec, 0x1] => Ok(BaseKeyPair::X25519(X25519KeyPair::from_public_key(&pub_key[2..]))),
-            [0xee, 0x1] => Ok(BaseKeyPair::Bls12381G1G2(Bls12381KeyPairs::from_public_key(&pub_key[2..]))),
-            [0x80, 0x24] => Ok(BaseKeyPair::P256(P256KeyPair::from_public_key(&pub_key[2..]))),
-            [0xe7, 0x1] => Ok(BaseKeyPair::Secp256k1(Secp256k1KeyPair::from_public_key(&pub_key[2..]))),
+        let key_pair = match pub_key[0..2] {
+            [0xed, 0x1] => Ok(KeyPair::Ed25519(Ed25519KeyPair::from_public_key(&pub_key[2..]))),
+            [0xec, 0x1] => Ok(KeyPair::X25519(X25519KeyPair::from_public_key(&pub_key[2..]))),
+            [0xee, 0x1] => Ok(KeyPair::Bls12381G1G2(Bls12381KeyPairs::from_public_key(&pub_key[2..]))),
+            [0x80, 0x24] => Ok(KeyPair::P256(P256KeyPair::from_public_key(&pub_key[2..]))),
+            [0xe7, 0x1] => Ok(KeyPair::Secp256k1(Secp256k1KeyPair::from_public_key(&pub_key[2..]))),
             _ => Err(Error::ResolutionFailed),
         };
 
         // If presented with *valid* signed JSON patches, apply them. Otherwise, return the key un-patched.
-        match base_key_pair {
+        match key_pair {
             Ok(key) => {
-                let mut key_pair = KeyPair { base_key_pair: key, patches: None};
+                let mut patched_key_pair = PatchedKeyPair { key_pair: key, patches: None};
                 let query_pairs: HashMap<_, _> = url.query_pairs().into_owned().collect();
                 let signed_ietf_json_patch = query_pairs.get("signedIetfJsonPatch");
                 match signed_ietf_json_patch {
-                    None => Ok(key_pair),
+                    None => Ok(patched_key_pair),
                     Some(patch) => {
                         let decoded_patches = decode_jws(&patch).and_then(| decoded: JWS | {
                             get_json_patches(&decoded).and_then(| parsed_patches: Vec<PatchOperation> | {
-                                if verify_json_patch_jws(&decoded, &key_pair) {
-                                    key_pair.add_patches(parsed_patches);
+                                if verify_json_patch_jws(&decoded, &patched_key_pair) {
+                                    patched_key_pair.add_patches(parsed_patches);
                                     Ok(())
                                 } else {
                                     Err(Error::DecodeError)
@@ -331,7 +331,7 @@ impl TryFrom<&str> for KeyPair {
                             })
                         });
                         match decoded_patches {
-                            Ok(()) => Ok(key_pair),
+                            Ok(()) => Ok(patched_key_pair),
                             Err(e) => Err(e)
                         }
                     }
@@ -342,7 +342,7 @@ impl TryFrom<&str> for KeyPair {
     }
 }
 
-impl From<&VerificationMethod> for KeyPair {
+impl From<&VerificationMethod> for PatchedKeyPair {
     fn from(vm: &VerificationMethod) -> Self {
         if vm.private_key.is_some() {
             vm.private_key.as_ref().unwrap().into()
@@ -352,7 +352,7 @@ impl From<&VerificationMethod> for KeyPair {
     }
 }
 
-impl From<&KeyFormat> for KeyPair {
+impl From<&KeyFormat> for PatchedKeyPair {
     fn from(key_format: &KeyFormat) -> Self {
         match key_format {
             KeyFormat::Base58(_) => todo!(),
@@ -360,13 +360,13 @@ impl From<&KeyFormat> for KeyPair {
             KeyFormat::JWK(jwk) => match jwk.curve.as_str() {
                 "Ed25519" => {
                     if jwk.d.is_some() {
-                        KeyPair::new(
+                        PatchedKeyPair::new(
                             Ed25519KeyPair::from_secret_key(
                                 base64::decode_config(jwk.d.as_ref().unwrap(), URL_SAFE).unwrap().as_slice()
                             ).into()
                         )
                     } else {
-                        KeyPair::new(
+                        PatchedKeyPair::new(
                             Ed25519KeyPair::from_public_key(
                                 base64::decode_config(jwk.x.as_ref().unwrap(), URL_SAFE).unwrap().as_slice()
                             ).into()
@@ -375,13 +375,13 @@ impl From<&KeyFormat> for KeyPair {
                 }
                 "X25519" => {
                     if jwk.d.is_some() {
-                        KeyPair::new(
+                        PatchedKeyPair::new(
                             X25519KeyPair::from_secret_key(
                                 base64::decode_config(jwk.d.as_ref().unwrap(), URL_SAFE).unwrap().as_slice()
                             ).into()
                         )
                     } else {
-                        KeyPair::new(
+                        PatchedKeyPair::new(
                             X25519KeyPair::from_public_key(
                                 base64::decode_config(jwk.x.as_ref().unwrap(), URL_SAFE).unwrap().as_slice()
                             ).into()
@@ -414,7 +414,7 @@ pub use {
 #[cfg(test)]
 pub mod test {
     use super::*;
-    use crate::{didcore::Config, BaseKeyPair};
+    use crate::{didcore::Config, KeyPair};
     use fluid::prelude::*;
     use json_patch::{AddOperation, ReplaceOperation};
     use serde_json::json;
@@ -477,7 +477,7 @@ pub mod test {
 
         let key = resolve(uri).unwrap();
 
-        assert!(matches!(key.base_key_pair, BaseKeyPair::Ed25519(_)));
+        assert!(matches!(key.key_pair, KeyPair::Ed25519(_)));
         assert_eq!("z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL", key.fingerprint());
     }
 
@@ -487,7 +487,7 @@ pub mod test {
 
         let key = resolve(uri);
 
-        assert!(matches!(key.unwrap().base_key_pair, BaseKeyPair::Ed25519(_)));
+        assert!(matches!(key.unwrap().key_pair, KeyPair::Ed25519(_)));
     }
 
     #[test]
@@ -496,7 +496,7 @@ pub mod test {
 
         let key = resolve(uri).unwrap();
 
-        assert!(matches!(key.base_key_pair, BaseKeyPair::Ed25519(_)));
+        assert!(matches!(key.key_pair, KeyPair::Ed25519(_)));
         assert_eq!("z6Mkt6QT8FPajKXDrtMefkjxRQENd9wFzKkDFomdQAVFzpzm", key.fingerprint())
     }
 
@@ -517,7 +517,7 @@ pub mod test {
     fn test_key_resolve() {
         let key = resolve("did:key:z6Mkk7yqnGF3YwTrLpqrW6PGsKci7dNqh1CjnvMbzrMerSeL").unwrap();
 
-        assert!(matches!(key.base_key_pair, BaseKeyPair::Ed25519(_)));
+        assert!(matches!(key.key_pair, KeyPair::Ed25519(_)));
     }
 
     #[theory]
@@ -527,7 +527,7 @@ pub mod test {
     fn test_resolve_secp256k1(did_uri: &str) {
         let key = resolve(did_uri).unwrap();
 
-        assert!(matches!(key.base_key_pair, BaseKeyPair::Secp256k1(_)));
+        assert!(matches!(key.key_pair, KeyPair::Secp256k1(_)));
     }
 
     #[test]
@@ -535,9 +535,9 @@ pub mod test {
         let expected = generate::<Ed25519KeyPair>(None);
         let vm = expected.get_verification_methods(super::CONFIG_JOSE_PRIVATE, "");
 
-        let actual: KeyPair = vm.first().unwrap().into();
+        let actual: PatchedKeyPair = vm.first().unwrap().into();
 
-        assert!(matches!(actual.base_key_pair, BaseKeyPair::Ed25519(_)));
+        assert!(matches!(actual.key_pair, KeyPair::Ed25519(_)));
         assert_eq!(actual.fingerprint(), expected.fingerprint());
 
         assert_eq!(expected.get_did_document(Config::default()), actual.get_did_document(Config::default()));
