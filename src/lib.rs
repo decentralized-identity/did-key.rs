@@ -132,14 +132,13 @@ pub fn verify_json_patch_jws(jws: &JWS, key: &PatchedKeyPair) -> bool {
 
 // Use json_patch helpers to patch a DID JSON document. Upon error, return original document.
 pub fn patch_json_document(doc: &Document, patches: Vec<PatchOperation>) -> Document {
-        let original = doc.clone();
+    let original = doc.clone();
 
     fn apply_patch(doc: &Document, patches: Vec<PatchOperation>) -> Result<Document, Box<dyn std::error::Error>> {
         let parsed_patch = from_value(json!(patches))?;
         let mut json_doc = serde_json::to_value(doc)?;
         patch(&mut json_doc, &parsed_patch)?;
-        serde_json::from_value(json_doc)
-            .or_else(|err| { Err(Box::new(err) as Box<dyn std::error::Error>) })
+        serde_json::from_value(json_doc).map_err(|e| e.into())
     }
 
     match apply_patch(doc, patches) {
