@@ -187,7 +187,7 @@ pub mod test {
 
         let resolved = resolve(did_uri).unwrap();
 
-        matches!(resolved, KeyPair::P256(_));
+        matches!(resolved.key_pair, KeyPair::P256(_));
     }
 
     #[test]

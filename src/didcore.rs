@@ -23,7 +23,7 @@ pub const CONFIG_LD_PRIVATE: Config = Config {
     serialize_secrets: true,
 };
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Document {
     #[serde(rename = "@context")]
@@ -42,16 +42,30 @@ pub struct Document {
     pub verification_method: Vec<VerificationMethod>,
 }
 
-#[derive(Deserialize, Debug, Clone, PartialEq, Default)]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct IetfJsonPatch {
+    #[serde(rename = "ietf-json-patch")]
+    pub value: serde_json::Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Deserialize)]
 pub struct VerificationMethod {
     pub id: String,
+    #[serde(rename = "type")]
     pub key_type: String,
     pub controller: String,
+    #[serde(alias = "publicKeyBase58")]
+    #[serde(alias = "publicKeyMultibase")]
+    #[serde(alias = "publicKeyJwk")]
     pub public_key: Option<KeyFormat>,
+    #[serde(alias = "privateKeyBase58")]
+    #[serde(alias = "privateKeyMultibase")]
+    #[serde(alias = "privateKeyJwk")]
     pub private_key: Option<KeyFormat>,
 }
 
 #[derive(Serialize, Debug, Clone, PartialEq, Deserialize)]
+#[serde(untagged)]
 pub enum KeyFormat {
     Base58(String),
     Multibase(Vec<u8>),
@@ -72,6 +86,21 @@ pub struct JWK {
     pub y: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub d: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
+pub struct JWSHeader {
+    #[serde(rename = "alg")]
+    pub algorithm: String,
+    #[serde(rename = "kid", default, skip_serializing_if = "Option::is_none")]
+    pub key_id: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
+pub struct JWS {
+    pub header: JWSHeader,
+    pub payload: Vec<u8>,
+    pub signature: Vec<u8>,
 }
 
 impl Serialize for VerificationMethod {
