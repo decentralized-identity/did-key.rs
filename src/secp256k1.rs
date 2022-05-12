@@ -113,17 +113,20 @@ impl DIDCore for Secp256k1KeyPair {
                     ..Default::default()
                 }),
             }),
-            private_key: self.secret_key.as_ref().map(|_| match config.use_jose_format {
-                false => KeyFormat::Base58(bs58::encode(self.private_key_bytes()).into_string()),
-                true => KeyFormat::JWK(JWK {
-                    key_type: "EC".into(),
-                    curve: "secp256k1".into(),
-                    x: Some(base64::encode_config(&pk[1..33], base64::URL_SAFE_NO_PAD)),
-                    y: Some(base64::encode_config(&pk[33..65], base64::URL_SAFE_NO_PAD)),
-                    d: Some(base64::encode_config(self.private_key_bytes(), base64::URL_SAFE_NO_PAD)),
-                    ..Default::default()
+            private_key: match config.serialize_secrets {
+                true => self.secret_key.as_ref().map(|_| match config.use_jose_format {
+                    false => KeyFormat::Base58(bs58::encode(self.private_key_bytes()).into_string()),
+                    true => KeyFormat::JWK(JWK {
+                        key_type: "EC".into(),
+                        curve: "secp256k1".into(),
+                        x: Some(base64::encode_config(&pk[1..33], base64::URL_SAFE_NO_PAD)),
+                        y: Some(base64::encode_config(&pk[33..65], base64::URL_SAFE_NO_PAD)),
+                        d: Some(base64::encode_config(self.private_key_bytes(), base64::URL_SAFE_NO_PAD)),
+                        ..Default::default()
+                    }),
                 }),
-            }),
+                false => None,
+            },
             ..Default::default()
         }]
     }
@@ -220,7 +223,15 @@ pub mod test {
             use_jose_format: true,
             serialize_secrets: true,
         });
+        assert!(did_doc.verification_method[0].private_key.is_some());
 
-        println!("{}", serde_json::to_string_pretty(&did_doc).unwrap())
+        println!("{}", serde_json::to_string_pretty(&did_doc).unwrap());
+
+        let did_doc = key.get_did_document(Config {
+            use_jose_format: true,
+            serialize_secrets: false,
+        });
+
+        assert!(did_doc.verification_method[0].private_key.is_none());
     }
 }

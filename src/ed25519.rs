@@ -87,16 +87,19 @@ impl DIDCore for Ed25519KeyPair {
                         ..Default::default()
                     }),
                 }),
-                private_key: self.secret_key.as_ref().map(|_| match config.use_jose_format {
-                    false => KeyFormat::Base58(bs58::encode(self.private_key_bytes()).into_string()),
-                    true => KeyFormat::JWK(JWK {
-                        key_type: "OKP".into(),
-                        curve: "Ed25519".into(),
-                        x: Some(base64::encode_config(self.public_key_bytes(), base64::URL_SAFE_NO_PAD)),
-                        d: Some(base64::encode_config(self.private_key_bytes(), base64::URL_SAFE_NO_PAD)),
-                        ..Default::default()
+                private_key: match config.serialize_secrets {
+                    true => self.secret_key.as_ref().map(|_| match config.use_jose_format {
+                        false => KeyFormat::Base58(bs58::encode(self.private_key_bytes()).into_string()),
+                        true => KeyFormat::JWK(JWK {
+                            key_type: "OKP".into(),
+                            curve: "Ed25519".into(),
+                            x: Some(base64::encode_config(self.public_key_bytes(), base64::URL_SAFE_NO_PAD)),
+                            d: Some(base64::encode_config(self.private_key_bytes(), base64::URL_SAFE_NO_PAD)),
+                            ..Default::default()
+                        }),
                     }),
-                }),
+                    false => None,
+                },
             },
             self.get_x25519().get_verification_methods(config, controller).first().unwrap().to_owned(),
         ]
@@ -206,7 +209,7 @@ impl From<ed25519_dalek::ed25519::Error> for Error {
 
 #[cfg(test)]
 pub mod test {
-    use crate::didcore::CONFIG_LD_PRIVATE;
+    use crate::didcore::{CONFIG_LD_PRIVATE, CONFIG_LD_PUBLIC};
 
     use super::*;
     #[test]
@@ -247,9 +250,11 @@ pub mod test {
         let key = Ed25519KeyPair::from_seed(bs58::decode(secret_key).into_vec().unwrap().as_slice());
 
         let json = key.get_did_document(CONFIG_LD_PRIVATE);
+        assert!(json.verification_method[0].private_key.is_some());
 
         println!("{}", serde_json::to_string_pretty(&json).unwrap());
 
-        assert!(true)
+        let json = key.get_did_document(CONFIG_LD_PUBLIC);
+        assert!(json.verification_method[0].private_key.is_none());
     }
 }

@@ -119,16 +119,19 @@ impl DIDCore for Bls12381KeyPairs {
                         ..Default::default()
                     }),
                 }),
-                private_key: self.secret_key.as_ref().map(|_| match config.use_jose_format {
-                    false => KeyFormat::Base58(bs58::encode(self.pk_g1.to_bytes()).into_string()),
-                    true => KeyFormat::JWK(JWK {
-                        key_type: "EC".into(),
-                        curve: "BLS12381_G1".into(),
-                        x: Some(base64::encode_config(self.pk_g1.to_bytes(), base64::URL_SAFE_NO_PAD)),
-                        d: Some(base64::encode_config(self.private_key_bytes(), base64::URL_SAFE_NO_PAD)),
-                        ..Default::default()
+                private_key: match config.serialize_secrets {
+                    true => self.secret_key.as_ref().map(|_| match config.use_jose_format {
+                        false => KeyFormat::Base58(bs58::encode(self.pk_g1.to_bytes()).into_string()),
+                        true => KeyFormat::JWK(JWK {
+                            key_type: "EC".into(),
+                            curve: "BLS12381_G1".into(),
+                            x: Some(base64::encode_config(self.pk_g1.to_bytes(), base64::URL_SAFE_NO_PAD)),
+                            d: Some(base64::encode_config(self.private_key_bytes(), base64::URL_SAFE_NO_PAD)),
+                            ..Default::default()
+                        }),
                     }),
-                }),
+                    false => None,
+                },
                 ..Default::default()
             },
             VerificationMethod {
@@ -147,16 +150,19 @@ impl DIDCore for Bls12381KeyPairs {
                         ..Default::default()
                     }),
                 }),
-                private_key: self.secret_key.as_ref().map(|_| match config.use_jose_format {
-                    false => KeyFormat::Base58(bs58::encode(self.private_key_bytes()).into_string()),
-                    true => KeyFormat::JWK(JWK {
-                        key_type: "EC".into(),
-                        curve: "BLS12381_G2".into(),
-                        x: Some(base64::encode_config(self.pk_g2.to_bytes(), base64::URL_SAFE_NO_PAD)),
-                        d: Some(base64::encode_config(self.private_key_bytes(), base64::URL_SAFE_NO_PAD)),
-                        ..Default::default()
+                private_key: match config.serialize_secrets {
+                    true => self.secret_key.as_ref().map(|_| match config.use_jose_format {
+                        false => KeyFormat::Base58(bs58::encode(self.private_key_bytes()).into_string()),
+                        true => KeyFormat::JWK(JWK {
+                            key_type: "EC".into(),
+                            curve: "BLS12381_G2".into(),
+                            x: Some(base64::encode_config(self.pk_g2.to_bytes(), base64::URL_SAFE_NO_PAD)),
+                            d: Some(base64::encode_config(self.private_key_bytes(), base64::URL_SAFE_NO_PAD)),
+                            ..Default::default()
+                        }),
                     }),
-                }),
+                    false => None,
+                },
                 ..Default::default()
             },
         ]
@@ -238,7 +244,7 @@ fn gen_sk(ikm: &[u8]) -> Option<SecretKey> {
 #[cfg(test)]
 pub mod test {
     use super::*;
-    use crate::CONFIG_LD_PRIVATE;
+    use crate::{CONFIG_LD_PRIVATE, CONFIG_LD_PUBLIC};
 
     #[test]
     fn test_signature() {
@@ -337,5 +343,17 @@ pub mod test {
         assert_eq!(sk_bytes.len(), 32);
         let key = Bls12381KeyPairs::from_secret_key(&sk_bytes);
         assert_eq!(key.private_key_bytes().len(), 32)
+    }
+
+    #[test]
+    fn test_did_doc() {
+        let key = Bls12381KeyPairs::new();
+        let json = key.get_did_document(CONFIG_LD_PRIVATE);
+        assert!(json.verification_method[0].private_key.is_some());
+
+        println!("{}", serde_json::to_string_pretty(&json).unwrap());
+
+        let json = key.get_did_document(CONFIG_LD_PUBLIC);
+        assert!(json.verification_method[0].private_key.is_none());
     }
 }
