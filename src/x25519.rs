@@ -104,16 +104,19 @@ impl DIDCore for X25519KeyPair {
                     ..Default::default()
                 }),
             }),
-            private_key: self.secret_key.as_ref().map(|_| match config.use_jose_format {
-                false => KeyFormat::Base58(bs58::encode(self.private_key_bytes()).into_string()),
-                true => KeyFormat::JWK(JWK {
-                    key_type: "OKP".into(),
-                    curve: "X25519".into(),
-                    x: Some(base64::encode_config(self.public_key_bytes(), base64::URL_SAFE_NO_PAD)),
-                    d: Some(base64::encode_config(self.private_key_bytes(), base64::URL_SAFE_NO_PAD)),
-                    ..Default::default()
+            private_key: match config.serialize_secrets {
+                true => self.secret_key.as_ref().map(|_| match config.use_jose_format {
+                    false => KeyFormat::Base58(bs58::encode(self.private_key_bytes()).into_string()),
+                    true => KeyFormat::JWK(JWK {
+                        key_type: "OKP".into(),
+                        curve: "X25519".into(),
+                        x: Some(base64::encode_config(self.public_key_bytes(), base64::URL_SAFE_NO_PAD)),
+                        d: Some(base64::encode_config(self.private_key_bytes(), base64::URL_SAFE_NO_PAD)),
+                        ..Default::default()
+                    }),
                 }),
-            }),
+                false => None,
+            },
             ..Default::default()
         }]
     }
@@ -172,5 +175,18 @@ pub mod test {
         let ex2 = bob.key_exchange(&alice);
 
         assert_eq!(ex1, ex2);
+    }
+
+    #[test]
+    fn test_did_doc() {
+        let key = X25519KeyPair::new_with_seed(vec![].as_slice());
+
+        let json = key.get_did_document(CONFIG_LD_PRIVATE);
+        assert!(json.verification_method[0].private_key.is_some());
+
+        println!("{}", serde_json::to_string_pretty(&json).unwrap());
+
+        let json = key.get_did_document(CONFIG_LD_PUBLIC);
+        assert!(json.verification_method[0].private_key.is_none());
     }
 }
