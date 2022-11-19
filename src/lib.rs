@@ -50,7 +50,7 @@ impl PatchedKeyPair {
 }
 
 /// Generate new `did:key` of the specified type
-pub fn generate<T: Generate + CoreSign + ECDH + DIDCore + Fingerprint + Into<KeyPair>>(seed: Option<&[u8]>) -> PatchedKeyPair {
+pub fn generate<T: Generate + ECDH + DIDCore + Fingerprint + Into<KeyPair>>(seed: Option<&[u8]>) -> PatchedKeyPair {
     PatchedKeyPair::new(T::new_with_seed(seed.map_or(vec![].as_slice(), |x| x)).into())
 }
 
