@@ -1,6 +1,6 @@
 [package]
 name = "did-key"
-version = "0.2.0-beta.1"
+version = "0.2.0"
 authors = ["Tomislav Markovski <tomislav@trinsic.id>", "Allison Bellows <alibellows@gmail.com>"]
 edition = "2018"
 license = "Apache-2.0"
@@ -26,7 +26,6 @@ serde = "1.0"
 serde_json = "1.0"
 base64 = "0.13"
 libsecp256k1 = "0.5.0"
-signature_bls = "0.35.0"
 bls12_381_plus = "0.7"
 json-patch = "0.2.6"
 

@@ -196,7 +196,7 @@ impl CoreSign for PatchedKeyPair {
             KeyPair::Ed25519(x) => x.sign(payload),
             KeyPair::X25519(x) => x.sign(payload),
             KeyPair::P256(x) => x.sign(payload),
-            KeyPair::Bls12381G1G2(x) => x.sign(payload),
+            KeyPair::Bls12381G1G2(_) => unimplemented!("signing for Bls12381G1G2 is not implemented"),
             KeyPair::Secp256k1(x) => x.sign(payload),
         }
     }
@@ -206,7 +206,7 @@ impl CoreSign for PatchedKeyPair {
             KeyPair::Ed25519(x) => x.verify(payload, signature),
             KeyPair::X25519(x) => x.verify(payload, signature),
             KeyPair::P256(x) => x.verify(payload, signature),
-            KeyPair::Bls12381G1G2(x) => x.verify(payload, signature),
+            KeyPair::Bls12381G1G2(_) => unimplemented!("verifying for Bls12381G1G2 is not implemented"),
             KeyPair::Secp256k1(x) => x.verify(payload, signature),
         }
     }
