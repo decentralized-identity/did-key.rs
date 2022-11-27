@@ -25,7 +25,7 @@ did_url = "0.1.0"
 serde = "1.0"
 serde_json = "1.0"
 base64 = "0.13"
-libsecp256k1 = "0.5.0"
+libsecp256k1 = "0.7.1"
 bls12_381_plus = "0.7"
 json-patch = "0.2.6"
 

@@ -60,7 +60,7 @@ pub fn resolve(did_uri: &str) -> Result<PatchedKeyPair, Error> {
 }
 
 /// Generate key pair from existing key material
-pub fn from_existing_key<T: Generate + CoreSign + ECDH + DIDCore + Fingerprint + Into<KeyPair>>(
+pub fn from_existing_key<T: Generate + ECDH + DIDCore + Fingerprint + Into<KeyPair>>(
     public_key: &[u8],
     private_key: Option<&[u8]>,
 ) -> PatchedKeyPair {
