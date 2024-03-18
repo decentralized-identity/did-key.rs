@@ -7,9 +7,11 @@ use crate::{
 };
 use curve25519_dalek::edwards::CompressedEdwardsY;
 use ed25519_dalek::*;
+use sha2::Sha512;
+use sha2::Digest;
 use std::convert::{TryFrom, TryInto};
 
-pub type Ed25519KeyPair = AsymmetricKey<PublicKey, SecretKey>;
+pub type Ed25519KeyPair = AsymmetricKey<VerifyingKey, SigningKey>;
 
 impl std::fmt::Debug for Ed25519KeyPair {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -21,8 +23,10 @@ impl Ed25519KeyPair {
     pub fn from_seed(seed: &[u8]) -> Self {
         let secret_seed = generate_seed(&seed.to_vec()).expect("invalid seed");
 
-        let sk: SecretKey = SecretKey::from_bytes(&secret_seed).expect("cannot generate secret key");
-        let pk: PublicKey = (&sk).try_into().expect("cannot generate public key");
+        let seed_input: &[u8; 32] = secret_seed[..32].try_into().expect("Invalid length secret seed");
+        
+        let sk: SigningKey = SigningKey::from_bytes(&seed_input);
+        let pk: VerifyingKey = sk.verifying_key();
 
         Ed25519KeyPair {
             secret_key: Some(sk),
@@ -31,8 +35,10 @@ impl Ed25519KeyPair {
     }
 
     pub fn from_public_key(public_key: &[u8]) -> Self {
+
+        let pk: &[u8; 32] = public_key[..32].try_into().expect("Invalid length public_key");
         Ed25519KeyPair {
-            public_key: PublicKey::from_bytes(public_key).expect("invalid byte data"),
+            public_key: VerifyingKey::from_bytes(pk).expect("Verifying key construction failed from bytes"),
             secret_key: None,
         }
     }
@@ -40,7 +46,7 @@ impl Ed25519KeyPair {
     pub fn get_x25519(&self) -> X25519KeyPair {
         match &self.secret_key {
             Some(sk) => {
-                let hash = Sha512::digest(&sk.as_ref()[..32]);
+                let hash = Sha512::digest(&sk.to_bytes());
                 let mut output = [0u8; 32];
                 output.copy_from_slice(&hash[..32]);
                 output[0] &= 248;
@@ -133,8 +139,10 @@ impl Generate for Ed25519KeyPair {
     fn new_with_seed(seed: &[u8]) -> Ed25519KeyPair {
         let secret_seed = generate_seed(&seed.to_vec()).expect("invalid seed");
 
-        let sk: SecretKey = SecretKey::from_bytes(&secret_seed).expect("cannot generate secret key");
-        let pk: PublicKey = (&sk).try_into().expect("cannot generate public key");
+        let seed_input: &[u8; 32] = secret_seed[..32].try_into().expect("Invalid length secret seed");
+        
+        let sk = SigningKey::from_bytes(&seed_input);
+        let pk: VerifyingKey = sk.verifying_key();
 
         Ed25519KeyPair {
             secret_key: Some(sk),
@@ -143,15 +151,19 @@ impl Generate for Ed25519KeyPair {
     }
 
     fn from_public_key(public_key: &[u8]) -> Ed25519KeyPair {
+
+        let pk_input: &[u8; 32] = public_key[..32].try_into().expect("Invalid length public_key");
+        
         Ed25519KeyPair {
-            public_key: PublicKey::from_bytes(public_key).expect("invalid byte data"),
+            public_key: VerifyingKey::from_bytes(pk_input).expect("Verifying key construction failed from bytes"),
             secret_key: None,
         }
     }
 
     fn from_secret_key(secret_key: &[u8]) -> Ed25519KeyPair {
-        let sk: SecretKey = SecretKey::from_bytes(&secret_key).expect("cannot generate secret key");
-        let pk: PublicKey = (&sk).try_into().expect("cannot generate public key");
+        let sk_input: &[u8; 32] = secret_key[..32].try_into().expect("Invalid length secret_key");
+        let sk = SigningKey::from_bytes(sk_input);
+        let pk: VerifyingKey = sk.verifying_key();
 
         Ed25519KeyPair {
             secret_key: Some(sk),
@@ -171,13 +183,10 @@ impl KeyMaterial for Ed25519KeyPair {
 
 impl CoreSign for Ed25519KeyPair {
     fn sign(&self, payload: &[u8]) -> Vec<u8> {
-        let esk: ExpandedSecretKey = match &self.secret_key {
-            Some(x) => x,
-            None => panic!("secret key not found"),
+        match &self.secret_key {
+            Some(sk) => sk.sign(payload).to_bytes().to_vec(),
+            None => panic!("secret key not set"),
         }
-        .into();
-
-        esk.sign(payload, &self.public_key).to_bytes().to_vec()
     }
 
     fn verify(&self, payload: &[u8], signature: &[u8]) -> Result<(), Error> {
